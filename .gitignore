@@ -1,0 +1,32 @@
+# Composer — libraries should not commit their lock file.
+/composer.lock
+/vendor/
+
+# PHPUnit cache.
+/.phpunit.cache/
+/.phpunit.result.cache
+
+# Local PHPStan overrides — never commit.
+/phpstan.neon.local
+
+# System Under Test — generated Drupal installation for functional tests.
+# Provision with: composer sut:si
+/sut/
+
+# Build artefacts.
+/build/
+
+# IDE files.
+/.idea/
+/.vscode/
+*.swp
+*.swo
+
+# macOS.
+.DS_Store
+
+# SUDS local overrides (developer-specific, never commit).
+suds.local.yml
+
+# Claude Code local session state.
+/.claude/

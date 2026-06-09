@@ -1,0 +1,166 @@
+# SUDS default configuration.
+#
+# These are the built-in defaults for every suds.yml key. You do not need to
+# copy these into your project — they are applied automatically. Copy only the
+# keys you want to override.
+#
+# Run `drush suds:config:dump --defaults` to view this file.
+# Run `drush suds:config:dump` to view your project's merged config.
+
+project:
+  # Required. Human-readable project name.
+  name: ~
+
+drupal:
+  # Path to the Drupal webroot, relative to the project root.
+  root: web
+  # Drupal installation profile used by suds:setup when installing from scratch.
+  profile: minimal
+
+sync:
+  # The environment key to pull from when --env is not specified.
+  # Must match a key defined under environments. No default — must be set if syncing.
+  # Serves as the fallback for both db and files steps; override per-section below.
+  default_source: ~
+
+  db:
+    # Overrides sync.default_source for the suds:db:sync step.
+    # Null means inherit from sync.default_source.
+    default_source: ~
+    # Directory (relative to project root) where suds:db:export writes dumps.
+    # Add this path to .gitignore so exports are not committed.
+    export_dir: db-exports
+    # Extra flags appended verbatim to the drush sql:dump invocation.
+    # Use for database-specific options your environment requires, e.g.:
+    #   dump_extra_flags: '--extra-dump=--single-transaction --no-tablespaces'
+    dump_extra_flags: ''
+    # Sanitize the database after syncing to scrub PII.
+    sanitize: true
+    # Pattern used to replace email addresses. %uid is substituted with the user ID.
+    sanitize_email: 'user+%uid@localhost'
+    # Value used to replace all user passwords after sanitization.
+    sanitize_password: password
+    # Tables to truncate entirely after sync. Override this list to replace it;
+    # set to [] to skip truncation entirely.
+    truncate_tables:
+      - cache_bootstrap
+      - cache_config
+      - cache_container
+      - cache_data
+      - cache_default
+      - cache_discovery
+      - cache_dynamic_page_cache
+      - cache_entity
+      - cache_menu
+      - cache_render
+      - flood
+      - history
+      - sessions
+      - watchdog
+
+  files:
+    # Overrides sync.default_source for the suds:files:sync step.
+    # Null means inherit from sync.default_source.
+    default_source: ~
+    # Whether to sync the files directory. Disabled by default (files can be large).
+    enabled: false
+    # File directories to sync, relative to drupal.root.
+    paths:
+      - sites/default/files
+
+  hooks:
+    # Shell commands to run before any sync steps (composer install, db, files, update).
+    pre_sync: []
+    # Shell commands to run after sync completes (e.g. drush cr, import extra config).
+    post_sync: []
+
+deploy:
+  repo:
+    # URL of the deployment (artifact) repository. Required when running suds:deploy.
+    url: ~
+    # Branch to push the artifact to. $SUDS_BRANCH is replaced with the current
+    # branch name at deploy time.
+    branch: '$SUDS_BRANCH-build'
+
+  # Commit message for the artifact commit. Supports $SUDS_BRANCH,
+  # $SUDS_HASH, and $SUDS_SHORT_HASH variable expansion.
+  commit_message: 'Deploy $SUDS_BRANCH [$SUDS_SHORT_HASH]'
+
+  # Git identity used for artifact commits. These defaults ensure git commit
+  # never fails in bare CI environments that have no global git identity set.
+  # Override in suds.ci.yml for your CI environment.
+  git:
+    name: 'SUDS Deploy'
+    email: 'suds@localhost'
+
+  # Shell commands to run in the artifact directory during assembly, in order.
+  # Defaults to a production-optimised Composer install. Replace this list to
+  # use different flags or add frontend build steps — when overriding, include
+  # composer install explicitly if your project still needs it.
+  # Example with an additional frontend build:
+  #   build_steps:
+  #     - composer install --no-dev --optimize-autoloader
+  #     - cd web/themes/custom/mytheme && npm ci && npm run build
+  build_steps:
+    - composer install --no-dev --optimize-autoloader
+
+  # Write a build manifest file to the artifact root after build_steps.
+  # Records branch, commit hash, and build timestamp for traceability.
+  # The file is committed into the artifact and readable on any environment.
+  manifest: true
+
+  # Filename for the build manifest, written to the artifact root.
+  manifest_file: 'SUDS_BUILD.txt'
+
+  # Paths to exclude from the artifact in addition to SUDS's built-in exclusions.
+  # SUDS always excludes: vendor dev-dependencies, .git/, suds.local.yml.
+  # List paths relative to the project root.
+  # Override this list entirely to replace it; use exclude_extra to append to it.
+  exclude:
+    - .editorconfig
+    - .gitattributes
+    - .gitignore
+    - CHANGELOG.md
+    - CONTRIBUTING.md
+    - SECURITY.md
+    - grumphp.yml
+    - phpcs.xml.dist
+    - phpstan.neon
+    - phpunit.xml.dist
+    - suds.ci.yml
+    - tests/
+
+  # Additional paths to exclude from the artifact, appended to deploy.exclude.
+  # Use this to add project-specific exclusions without replacing the default list.
+  # Example: ['web/themes/custom/mytheme/node_modules']
+  exclude_extra: []
+
+  hooks:
+    # Shell commands to run before the artifact is pushed.
+    pre_deploy: []
+    # Shell commands to run after the artifact has been pushed.
+    post_deploy: []
+
+update:
+  hooks:
+    # Shell commands to run before cache rebuild, DB updates, and config import.
+    pre_update: []
+    # Shell commands to run after cache rebuild, DB updates, and config import
+    # complete (e.g. frontend asset compilation).
+    post_update: []
+
+setup:
+  # Drupal recipes to apply after site install, in order (requires Drupal 10.3+).
+  # Each entry is a path to a recipe directory, relative to the project root.
+  # The profile (drupal.profile) is installed first; recipes layer on top of it.
+  # Example:
+  #   recipes:
+  #     - web/core/recipes/basic-setup
+  #     - recipes/custom/my-recipe
+  recipes: []
+
+  hooks:
+    # Shell commands to run before suds:setup installs Drupal.
+    pre_setup: []
+    # Shell commands to run after suds:setup completes (including recipes).
+    post_setup: []

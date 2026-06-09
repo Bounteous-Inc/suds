@@ -1,0 +1,21 @@
+# suds.ci.yml - SUDS CI environment overrides.
+#
+# Loaded automatically when the CI environment variable is set, which is
+# standard in GitHub Actions, GitLab CI, and Bitbucket Pipelines.
+# Excluded from artifact deployments by default (see deploy.exclude).
+#
+# Use this file to override settings that differ between local and CI
+# environments. Copy only the keys you need — all other settings are
+# inherited from suds.yml and suds.defaults.yml.
+
+deploy:
+  # Override the git identity used for artifact commits in CI.
+  git:
+    name: 'CI Deploy'
+    email: 'ci@example.com'
+
+# Uncomment to skip database sanitization in CI (e.g. when running tests
+# against a fixture database that contains no real PII).
+# sync:
+#   db:
+#     sanitize: false

@@ -1,0 +1,11 @@
+<svg width="240" height="240" viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="SUDS icon">
+  <rect x="12" y="12" width="216" height="216" rx="52" fill="#33139F"/>
+  <circle cx="150" cy="54" r="8" fill="#34B3FF"/>
+  <circle cx="92" cy="150" r="36" fill="#ffffff"/>
+  <circle cx="150" cy="132" r="28" fill="#853EFF"/>
+  <circle cx="122" cy="184" r="22" fill="#34B3FF"/>
+  <circle cx="172" cy="178" r="18" fill="#ffffff" opacity="0.92"/>
+  <circle cx="74" cy="106" r="16" fill="#34B3FF"/>
+  <circle cx="128" cy="90" r="17" fill="#693AF3"/>
+  <circle cx="188" cy="120" r="10" fill="#ffffff" opacity="0.85"/>
+</svg>

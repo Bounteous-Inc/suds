@@ -1,0 +1,113 @@
+{
+    "name": "bounteous/suds",
+    "description": "An opinionated orchestrator for Drupal site development workflows.",
+    "license": "GPL-2.0-or-later",
+    "type": "drupal-drush",
+    "keywords": [
+        "drupal",
+        "drush",
+        "deployment",
+        "workflow",
+        "orchestration"
+    ],
+    "authors": [
+        {
+            "name": "Bounteous",
+            "homepage": "https://www.bounteous.com"
+        },
+        {
+            "name": "Andy Carlberg",
+            "email": "andycarlberg@users.noreply.github.com",
+            "role": "Original Author"
+        }
+    ],
+    "require": {
+        "php": ">=8.3",
+        "drush/drush": "^13.0"
+    },
+    "require-dev": {
+        "composer/installers": "^2.0",
+        "dealerdirect/phpcodesniffer-composer-installer": "^1.0",
+        "drupal/coder": "^8.3",
+        "drupal/core-recommended": "^10.4 || ^11.0",
+        "ergebnis/composer-normalize": "^2.0",
+        "php-parallel-lint/php-parallel-lint": "^1.4",
+        "phpro/grumphp": "^2.5",
+        "phpstan/phpstan": "^2.0",
+        "phpstan/phpstan-deprecation-rules": "^2.0",
+        "phpstan/phpstan-phpunit": "^2.0",
+        "phpunit/phpunit": "^11.0",
+        "squizlabs/php_codesniffer": "^3.9"
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "autoload": {
+        "psr-4": {
+            "Bounteous\\Suds\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Bounteous\\Suds\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "composer/installers": true,
+            "dealerdirect/phpcodesniffer-composer-installer": true,
+            "drupal/core-composer-scaffold": true,
+            "ergebnis/composer-normalize": true,
+            "phpro/grumphp": true
+        },
+        "sort-packages": true
+    },
+    "extra": {
+        "drupal-scaffold": {
+            "file-mapping": {
+                "[project-root]/.editorconfig": false,
+                "[project-root]/.gitattributes": false
+            },
+            "locations": {
+                "web-root": "sut/"
+            }
+        },
+        "drush": {
+            "services": "drush.services.yml"
+        },
+        "installer-paths": {
+            "sut/core": [
+                "type:drupal-core"
+            ],
+            "sut/libraries/{$name}": [
+                "type:drupal-library"
+            ],
+            "sut/modules/contrib/{$name}": [
+                "type:drupal-module"
+            ],
+            "sut/profiles/contrib/{$name}": [
+                "type:drupal-profile"
+            ],
+            "sut/themes/contrib/{$name}": [
+                "type:drupal-theme"
+            ],
+            "sut/drush/contrib/{$name}": [
+                "type:drupal-drush"
+            ]
+        }
+    },
+    "scripts": {
+        "analyze": "phpstan analyze --no-progress --memory-limit=512M",
+        "lint": "phpcs",
+        "lint:fix": "phpcbf",
+        "sut:si": "vendor/bin/drush --root=sut site:install minimal --sites-subdir=default --db-url=${UNISH_DB_URL:-sqlite://sites/default/files/.ht.sqlite} --account-pass=admin --yes",
+        "test": "phpunit",
+        "test:functional": "phpunit --testsuite functional",
+        "test:integration": "phpunit --testsuite integration",
+        "test:unit": "phpunit --testsuite unit",
+        "validate:all": [
+            "@lint",
+            "@analyze",
+            "@test:unit"
+        ]
+    }
+}

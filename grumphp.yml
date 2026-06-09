@@ -1,0 +1,72 @@
+grumphp:
+  tasks:
+    # Validate composer.json is well-formed and in sync.
+    composer:
+      file: composer.json
+
+    # Enforce normalized composer.json formatting.
+    composer_normalize: ~
+
+    # Lint JSON files.
+    jsonlint:
+      detect_key_conflicts: true
+
+    # Lint PHP syntax quickly before the heavier PHPCS/PHPStan passes.
+    phplint:
+      triggered_by: [php]
+
+    # Enforce Drupal coding standards.
+    phpcs:
+      standard: phpcs.xml.dist
+      show_sniffs_error_path: true
+
+    # Run static analysis.
+    phpstan:
+      configuration: phpstan.neon
+      use_grumphp_paths: false
+      memory_limit: "-1"
+
+    # Run the unit test suite only. Functional tests require the SUT to be
+    # provisioned first (`composer sut:si`) and are run separately.
+    phpunit:
+      config_file: phpunit.xml.dist
+      testsuite: unit
+
+    # Enforce Conventional Commits on the subject line.
+    # Format: <type>[optional scope]: <description>
+    # Types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
+    git_commit_message:
+      enforce_capitalized_subject: false
+      enforce_single_lined_subject: true
+      max_subject_width: 100
+      max_body_width: 0
+      type_scope_conventions:
+        types:
+          - feat
+          - fix
+          - docs
+          - style
+          - refactor
+          - perf
+          - test
+          - build
+          - ci
+          - chore
+          - revert
+
+    # Detect debug artifacts left in committed code.
+    git_blacklist:
+      keywords:
+        - '\bvar_dump\('
+        - '\bdd\('
+        - '(?<!::)\bdump\('
+        - '\bxdebug_break\('
+        - '\bconsole\.log\('
+      regexp_type: P
+      triggered_by: [php]
+
+    # Lint YAML files.
+    yamllint:
+      whitelist_patterns:
+        - /^.*\.(yml|yaml)$/i
+      object_support: true

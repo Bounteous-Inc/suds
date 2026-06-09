@@ -1,0 +1,11 @@
+includes:
+    - vendor/mglaman/phpstan-drupal/extension.neon
+    - vendor/phpstan/phpstan-deprecation-rules/rules.neon
+
+parameters:
+    level: 6
+    paths:
+        - {{ drupal_root }}/modules/custom
+        - {{ drupal_root }}/themes/custom
+    excludePaths:
+        - vendor

@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<ruleset name="Project">
+  <description>PHP CodeSniffer configuration.</description>
+
+  <!-- Scan custom modules and themes. -->
+  <file>{{ drupal_root }}/modules/custom</file>
+  <file>{{ drupal_root }}/themes/custom</file>
+
+  <!-- Enforce Drupal coding standards. -->
+  <rule ref="Drupal"/>
+  <rule ref="DrupalPractice"/>
+
+  <!-- Scan PHP and Drupal-specific file extensions. -->
+  <arg name="extensions" value="php,module,inc,install,test,profile,theme"/>
+
+  <!-- Show colours and sniff codes. -->
+  <arg name="colors"/>
+  <arg value="sp"/>
+
+  <!-- Exclude generated and third-party code. -->
+  <exclude-pattern>vendor/</exclude-pattern>
+  <exclude-pattern>node_modules/</exclude-pattern>
+</ruleset>

@@ -1,0 +1,37 @@
+services:
+  bounteous.suds.config_commands:
+    class: \Bounteous\Suds\Drush\Commands\ConfigCommands
+    tags:
+      - { name: drush.command }
+  bounteous.suds.init_commands:
+    class: \Bounteous\Suds\Drush\Commands\InitCommands
+    tags:
+      - { name: drush.command }
+  bounteous.suds.setup_commands:
+    class: \Bounteous\Suds\Drush\Commands\SetupCommands
+    tags:
+      - { name: drush.command }
+  bounteous.suds.db_commands:
+    class: \Bounteous\Suds\Drush\Commands\DbCommands
+    tags:
+      - { name: drush.command }
+  bounteous.suds.files_commands:
+    class: \Bounteous\Suds\Drush\Commands\FilesCommands
+    tags:
+      - { name: drush.command }
+  bounteous.suds.sync_commands:
+    class: \Bounteous\Suds\Drush\Commands\SyncCommands
+    tags:
+      - { name: drush.command }
+  bounteous.suds.update_commands:
+    class: \Bounteous\Suds\Drush\Commands\UpdateCommands
+    tags:
+      - { name: drush.command }
+  bounteous.suds.doctor_commands:
+    class: \Bounteous\Suds\Drush\Commands\DoctorCommands
+    tags:
+      - { name: drush.command }
+  bounteous.suds.deploy_commands:
+    class: \Bounteous\Suds\Drush\Commands\DeployCommands
+    tags:
+      - { name: drush.command }

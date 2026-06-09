@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<ruleset name="SUDS">
+  <description>PHP CodeSniffer configuration for SUDS.</description>
+
+  <!-- Scan these paths. -->
+  <file>src</file>
+  <file>tests</file>
+
+  <!-- Enforce Drupal coding standards. -->
+  <rule ref="Drupal"/>
+  <rule ref="DrupalPractice"/>
+
+  <!-- Only lint PHP files. -->
+  <arg name="extensions" value="php"/>
+
+  <!-- Show colours and sniff codes. -->
+  <arg name="colors"/>
+  <arg value="sp"/>
+
+  <!-- Exclude generated / third-party code. -->
+  <exclude-pattern>vendor/</exclude-pattern>
+</ruleset>

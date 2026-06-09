@@ -1,0 +1,117 @@
+image: php:8.3-cli
+
+definitions:
+  caches:
+    composer: ~/.composer/cache
+
+  steps:
+    - step: &lint-step
+        name: Lint & Static Analysis
+        caches:
+          - composer
+        script:
+          - . ci/setup.sh
+          - composer lint
+          - composer analyze
+
+    - step: &unit-step
+        name: Unit Tests
+        caches:
+          - composer
+        script:
+          - . ci/setup.sh
+          - composer test:unit
+
+    - step: &integration-step
+        name: Integration Tests
+        caches:
+          - composer
+        script:
+          - . ci/setup.sh
+          - composer test:integration
+
+    - step: &functional-step
+        name: Functional Tests
+        caches:
+          - composer
+        script:
+          - . ci/setup.sh
+          - composer sut:si
+          - composer test:functional
+
+    # Runs automatically after every CI-green merge to main.
+    #
+    # - Release PR merged  →  pushes the version tag.
+    # - Any other PR merged  →  creates or refreshes a release/X.Y.Z PR.
+    #   If the branch already exists (PR open from a prior run), it is
+    #   force-pushed so the open PR updates in place with the latest CHANGELOG.
+    #
+    # Prerequisite: RELEASE_TOKEN repository variable (Bitbucket access token
+    # with repository write scope).
+    - step: &release-step
+        name: Release
+        image: php:8.3-cli
+        clone:
+          depth: full
+        script:
+          - apt-get update -q && apt-get install -y -q --no-install-recommends git
+          - git config user.email "release-pipeline@bots.bitbucket.org"
+          - git config user.name "Release pipeline"
+          - git remote set-url origin "https://x-token-auth:${RELEASE_TOKEN}@bitbucket.org/${BITBUCKET_REPO_FULL_NAME}.git"
+          - |
+            SUBJECT=$(git log -1 --pretty=format:'%s')
+
+            if echo "$SUBJECT" | grep -qE '(^chore\(release\):|Merged in release/)'; then
+              VERSION=$(php -r "echo json_decode(file_get_contents('composer.json'), true)['version'];")
+              echo "Tagging v${VERSION}"
+              git tag "v${VERSION}"
+              git push origin "v${VERSION}"
+            else
+              GIT_CLIFF_VERSION=2.12.0
+              mkdir -p /tmp/git-cliff
+              curl -fsSL "https://github.com/orhun/git-cliff/releases/download/v${GIT_CLIFF_VERSION}/git-cliff-${GIT_CLIFF_VERSION}-x86_64-unknown-linux-gnu.tar.gz" | tar xz -C /tmp/git-cliff --strip-components=1
+              export PATH="/tmp/git-cliff:$PATH"
+
+              # Strip any leading v so manifests get bare semver (e.g. 1.1.0).
+              NEXT_VERSION=$(git-cliff --bumped-version | sed 's/^v//')
+
+              if git ls-remote --heads origin "release/${NEXT_VERSION}" | grep -q "."; then
+                BRANCH_IS_NEW=false
+              else
+                BRANCH_IS_NEW=true
+              fi
+
+              echo "Preparing release ${NEXT_VERSION}"
+              git checkout -b "release/${NEXT_VERSION}"
+              php scripts/sync-version.php "${NEXT_VERSION}"
+              git-cliff --tag "v${NEXT_VERSION}" --output CHANGELOG.md
+              git add composer.json CHANGELOG.md
+              git commit -m "chore(release): ${NEXT_VERSION}"
+              git push --force origin "release/${NEXT_VERSION}"
+
+              if [ "$BRANCH_IS_NEW" = true ]; then
+                curl -sf -X POST \
+                  -H "Authorization: Bearer ${RELEASE_TOKEN}" \
+                  -H "Content-Type: application/json" \
+                  "https://api.bitbucket.org/2.0/repositories/${BITBUCKET_REPO_FULL_NAME}/pullrequests" \
+                  -d "{\"title\":\"chore(release): ${NEXT_VERSION}\",\"source\":{\"branch\":{\"name\":\"release/${NEXT_VERSION}\"}},\"destination\":{\"branch\":{\"name\":\"main\"}},\"description\":\"Review CHANGELOG.md before merging. The pipeline will push the version tag automatically when this PR merges.\",\"close_source_branch\":true}"
+              fi
+            fi
+
+pipelines:
+  branches:
+    main:
+      - parallel:
+          - step: *lint-step
+          - step: *unit-step
+          - step: *integration-step
+          - step: *functional-step
+      - step: *release-step
+
+  pull-requests:
+    '**':
+      - parallel:
+          - step: *lint-step
+          - step: *unit-step
+          - step: *integration-step
+          - step: *functional-step
