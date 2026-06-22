@@ -61,6 +61,62 @@ class InitCommandsTest extends TestCase {
   }
 
   /**
+   * Verifies init() calls ask() without a validator argument.
+   *
+   * DrushStyle throws an AssertionError when a $validator is passed.
+   */
+  public function testInitAsksForNameWithoutValidator(): void {
+    $io = $this->createMock(DrushStyle::class);
+    $io->expects($this->once())
+      ->method('ask')
+      ->with('Project name')
+      ->willReturn('Interactive Project');
+
+    $command = $this->getMockBuilder(InitCommands::class)
+      ->onlyMethods(['getTargetDir', 'io'])
+      ->getMock();
+    $command->method('getTargetDir')->willReturn($this->dir);
+    $command->method('io')->willReturn($io);
+
+    $command->init([
+      'name'         => '',
+      'drupal-root'  => 'web',
+      'skip-quality' => TRUE,
+      'skip-ci'      => TRUE,
+      'ci-provider'  => '',
+    ]);
+
+    $contents = file_get_contents($this->dir . '/suds.yml');
+    $this->assertIsString($contents);
+    $this->assertStringContainsString('name: Interactive Project', $contents);
+  }
+
+  /**
+   * Verifies init() throws when ask() returns an empty string interactively.
+   */
+  public function testInitThrowsWhenInteractiveNameIsEmpty(): void {
+    $io = $this->createMock(DrushStyle::class);
+    $io->method('ask')->willReturn('');
+
+    $command = $this->getMockBuilder(InitCommands::class)
+      ->onlyMethods(['getTargetDir', 'io'])
+      ->getMock();
+    $command->method('getTargetDir')->willReturn($this->dir);
+    $command->method('io')->willReturn($io);
+
+    $this->expectException(\RuntimeException::class);
+    $this->expectExceptionMessageMatches('/cannot be empty/');
+
+    $command->init([
+      'name'         => '',
+      'drupal-root'  => 'web',
+      'skip-quality' => TRUE,
+      'skip-ci'      => TRUE,
+      'ci-provider'  => '',
+    ]);
+  }
+
+  /**
    * Verifies init() throws when suds.yml already exists in the target dir.
    */
   public function testInitThrowsWhenConfigFileAlreadyExists(): void {

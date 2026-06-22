@@ -59,6 +59,11 @@
             "ergebnis/composer-normalize": true,
             "phpro/grumphp": true
         },
+        "policy": {
+            "advisories": {
+                "block": false
+            }
+        },
         "sort-packages": true
     },
     "extra": {

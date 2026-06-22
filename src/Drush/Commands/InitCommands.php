@@ -67,16 +67,11 @@ class InitCommands extends DrushCommands implements SiteAliasManagerAwareInterfa
 
     $projectName = $options['name'];
     if ($projectName === '') {
-      $projectName = $this->io()->ask(
-        'Project name',
-        NULL,
-        static function (mixed $value): string {
-          if (!is_string($value) || trim($value) === '') {
-            throw new \RuntimeException('Project name cannot be empty.');
-          }
-          return trim($value);
-        },
-      );
+      $projectName = $this->io()->ask('Project name');
+      if (!is_string($projectName) || trim($projectName) === '') {
+        throw new \RuntimeException('Project name cannot be empty.');
+      }
+      $projectName = trim($projectName);
     }
     else {
       $projectName = trim($projectName);
