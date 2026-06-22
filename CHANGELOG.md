@@ -2,18 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.0.0] - 2026-04-13
+## [0.1.1] - 2026-06-22
 
 ### Bug Fixes
-- **tests:** Resolve 6 functional test failures from CI pipeline
-- **db:** Run SQL import in Drupal root instead of getcwd()
+- Remove non-functional validator arg from DrushStyle::ask() in suds:init
 
 
-### Documentation
-- Add installation guide and ADRs
-
-
-### Features
-- **tests:** Add integration and functional test suites with full pipeline coverage
-
+## [0.1.0] - 2026-06-09
 
