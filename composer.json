@@ -114,5 +114,6 @@
             "@analyze",
             "@test:unit"
         ]
-    }
+    },
+    "version": "0.1.1"
 }
