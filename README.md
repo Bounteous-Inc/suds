@@ -208,8 +208,6 @@ drush suds:init --skip-quality-scaffold
 | `--drupal-root` | (auto-detect or prompt) | Drupal webroot directory relative to the project root; auto-detected from `web/`, `docroot/`, or `html/` when omitted |
 | `--skip-quality-scaffold` | disabled | Skip scaffolding quality tool config files |
 
-`suds:init` also generates a `salt.txt` file in the project root containing a cryptographically secure Drupal hash salt. If `salt.txt` already exists it is left untouched. **Commit `salt.txt` to the repository** — Drupal's hash salt must remain stable across all environments and deployments. Adding it to `.gitignore` is not recommended.
-
 ### `suds:scaffold:quality`
 
 Scaffold code quality configuration files into the project root: `grumphp.yml`, `phpcs.xml.dist`, and `phpstan.neon`. Files are pre-configured for a Drupal site with custom modules and themes under the configured webroot. Existing files are left untouched unless `--force` is passed.
