@@ -381,105 +381,6 @@ class InitCommandsTest extends TestCase {
   }
 
   /**
-   * Verifies init() creates salt.txt when it does not exist.
-   */
-  public function testInitCreatesSaltFile(): void {
-    $command = $this->getMockBuilder(InitCommands::class)
-      ->onlyMethods(['getTargetDir', 'io'])
-      ->getMock();
-    $command->method('getTargetDir')->willReturn($this->dir);
-    $command->method('io')->willReturn($this->createMock(DrushStyle::class));
-
-    $command->init([
-      'name'         => 'My Project',
-      'drupal-root'  => 'web',
-      'skip-quality' => TRUE,
-      'skip-ci'      => TRUE,
-      'ci-provider'  => '',
-    ]);
-
-    $this->assertFileExists($this->dir . '/salt.txt');
-  }
-
-  /**
-   * Verifies the generated salt.txt contains a non-empty base64 string.
-   */
-  public function testInitSaltFileContainsValidValue(): void {
-    $command = $this->getMockBuilder(InitCommands::class)
-      ->onlyMethods(['getTargetDir', 'io'])
-      ->getMock();
-    $command->method('getTargetDir')->willReturn($this->dir);
-    $command->method('io')->willReturn($this->createMock(DrushStyle::class));
-
-    $command->init([
-      'name'         => 'My Project',
-      'drupal-root'  => 'web',
-      'skip-quality' => TRUE,
-      'skip-ci'      => TRUE,
-      'ci-provider'  => '',
-    ]);
-
-    $salt = file_get_contents($this->dir . '/salt.txt');
-    $this->assertIsString($salt);
-    $this->assertGreaterThanOrEqual(55, strlen($salt));
-    $this->assertStringNotContainsString('=', $salt, 'Salt must not contain base64 padding.');
-  }
-
-  /**
-   * Verifies init() does not overwrite an existing salt.txt.
-   */
-  public function testInitDoesNotOverwriteExistingSaltFile(): void {
-    $existingSalt = 'existing-salt-value-that-must-not-change';
-    file_put_contents($this->dir . '/salt.txt', $existingSalt);
-
-    $command = $this->getMockBuilder(InitCommands::class)
-      ->onlyMethods(['getTargetDir', 'io'])
-      ->getMock();
-    $command->method('getTargetDir')->willReturn($this->dir);
-    $command->method('io')->willReturn($this->createMock(DrushStyle::class));
-
-    $command->init([
-      'name'         => 'My Project',
-      'drupal-root'  => 'web',
-      'skip-quality' => TRUE,
-      'skip-ci'      => TRUE,
-      'ci-provider'  => '',
-    ]);
-
-    $this->assertSame($existingSalt, file_get_contents($this->dir . '/salt.txt'));
-  }
-
-  /**
-   * Verifies init() notes salt.txt generation so developers know to commit it.
-   */
-  public function testInitNotesSaltGeneration(): void {
-    $notes = [];
-    $io = $this->createMock(DrushStyle::class);
-    $io->method('note')->willReturnCallback(
-      static function (string $msg) use (&$notes): void {
-        $notes[] = $msg;
-      },
-    );
-
-    $command = $this->getMockBuilder(InitCommands::class)
-      ->onlyMethods(['getTargetDir', 'io'])
-      ->getMock();
-    $command->method('getTargetDir')->willReturn($this->dir);
-    $command->method('io')->willReturn($io);
-
-    $command->init([
-      'name'         => 'My Project',
-      'drupal-root'  => 'web',
-      'skip-quality' => TRUE,
-      'skip-ci'      => TRUE,
-      'ci-provider'  => '',
-    ]);
-
-    $saltNotes = array_filter($notes, static fn(string $n) => str_contains($n, 'salt.txt'));
-    $this->assertNotEmpty($saltNotes, 'Expected a note about salt.txt generation.');
-  }
-
-  /**
    * Verifies init() calls dispatchCiScaffold() with the given provider.
    */
   public function testInitDispatchesCiScaffoldWhenProviderSet(): void {
@@ -561,18 +462,6 @@ class InitCommandsTest extends TestCase {
       'skip-ci'      => FALSE,
       'ci-provider'  => '',
     ]);
-  }
-
-  /**
-   * Verifies generateSalt() returns a non-empty, padding-free base64 string.
-   */
-  public function testGenerateSaltReturnsValidString(): void {
-    $method = new \ReflectionMethod(InitCommands::class, 'generateSalt');
-    $salt = $method->invoke(new InitCommands());
-
-    $this->assertIsString($salt);
-    $this->assertGreaterThanOrEqual(55, strlen($salt));
-    $this->assertStringNotContainsString('=', $salt, 'Salt must not contain base64 padding.');
   }
 
 }

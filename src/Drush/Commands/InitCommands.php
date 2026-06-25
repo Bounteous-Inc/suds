@@ -141,14 +141,6 @@ class InitCommands extends DrushCommands implements SiteAliasManagerAwareInterfa
       $this->io()->note('Created .gitignore with suds.local.yml.');
     }
 
-    $saltFile = $targetDir . '/salt.txt';
-    if (!file_exists($saltFile)) {
-      if (file_put_contents($saltFile, $this->generateSalt()) === FALSE) {
-        throw new \RuntimeException(sprintf('Failed to write %s.', $saltFile));
-      }
-      $this->io()->note('Generated salt.txt — commit this file; it must remain stable across deployments.');
-    }
-
     if ($options['skip-ci'] && $options['ci-provider'] !== '') {
       throw new \InvalidArgumentException(
         '--skip-ci and --ci-provider are mutually exclusive.',
@@ -181,19 +173,6 @@ class InitCommands extends DrushCommands implements SiteAliasManagerAwareInterfa
       '  3. Run <info>drush suds:config:dump</info> to verify your configuration.',
     ];
     $this->io()->text($nextSteps);
-  }
-
-  /**
-   * Generates a random Drupal-compatible hash salt.
-   *
-   * Uses 55 bytes of cryptographically secure randomness encoded as base64
-   * without padding, matching the format Drupal expects in salt.txt.
-   *
-   * @return string
-   *   A base64-encoded string suitable for use as a Drupal hash salt.
-   */
-  protected function generateSalt(): string {
-    return rtrim(base64_encode(random_bytes(55)), '=');
   }
 
   /**

@@ -239,34 +239,6 @@ class InitCommandsIntegrationTest extends IntegrationTestCase {
   }
 
   /**
-   * Tests that suds:init creates salt.txt when it does not exist.
-   */
-  public function testInitCreatesSaltFile(): void {
-    $this->tester->run([
-      'command'      => 'suds:init',
-      '--name'       => 'Acme Site',
-      '--drupal-root' => 'web',
-    ]);
-    $this->assertFileExists($this->tmpDir . '/salt.txt');
-  }
-
-  /**
-   * Tests that suds:init does not overwrite an existing salt.txt.
-   */
-  public function testInitDoesNotOverwriteExistingSaltFile(): void {
-    $existingSalt = 'existing-salt-that-must-not-change';
-    file_put_contents($this->tmpDir . '/salt.txt', $existingSalt);
-
-    $this->tester->run([
-      'command'      => 'suds:init',
-      '--name'       => 'Acme Site',
-      '--drupal-root' => 'web',
-    ]);
-
-    $this->assertSame($existingSalt, file_get_contents($this->tmpDir . '/salt.txt'));
-  }
-
-  /**
    * Tests that suds:init dispatches quality scaffold by default.
    */
   public function testInitDispatchesQualityScaffoldByDefault(): void {
