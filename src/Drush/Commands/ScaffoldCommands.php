@@ -110,7 +110,7 @@ class ScaffoldCommands extends DrushCommands {
     $this->io()->text([
       'Next steps:',
       '  1. Require quality tooling dev dependencies:',
-      '       composer require --dev phpro/grumphp squizlabs/php_codesniffer drupal/coder dealerdirect/phpcodesniffer-composer-installer phpstan/phpstan mglaman/phpstan-drupal phpstan/phpstan-deprecation-rules ergebnis/composer-normalize vincentlanglet/twig-cs-fixer',
+      '       composer require --dev phpro/grumphp squizlabs/php_codesniffer drupal/coder dealerdirect/phpcodesniffer-composer-installer phpstan/phpstan phpstan/extension-installer mglaman/phpstan-drupal phpstan/phpstan-deprecation-rules ergebnis/composer-normalize vincentlanglet/twig-cs-fixer',
       '  2. Review and customize the scaffolded configuration files.',
     ]);
   }

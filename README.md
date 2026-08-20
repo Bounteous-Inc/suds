@@ -4,6 +4,15 @@
 
 <p align="center"><em>Sync. Update. Deploy. Suite.</em></p>
 
+<p align="center">
+
+[![CI](https://github.com/Bounteous-Inc/suds/actions/workflows/ci.yml/badge.svg)](https://github.com/Bounteous-Inc/suds/actions/workflows/ci.yml)
+[![Packagist Version](https://img.shields.io/packagist/v/bounteous-inc/suds)](https://packagist.org/packages/bounteous-inc/suds)
+[![PHP Version](https://img.shields.io/packagist/php-v/bounteous-inc/suds)](composer.json)
+[![License](https://img.shields.io/packagist/l/bounteous-inc/suds)](LICENSE)
+
+</p>
+
 An opinionated orchestrator for Drupal development workflows, implemented as [Drush](https://www.drush.org) commands. Inspired by the [Acquia BLT](https://github.com/acquia/blt) project.
 
 SUDS gives every developer on a project — and every CI pipeline — the same commands for the same tasks. Syncing a database, deploying a build artifact, applying updates after a pull: the answers are always `drush suds:sync`, `drush suds:deploy`, `drush suds:update`, regardless of which project you are working on.
@@ -29,7 +38,7 @@ Both workflows are driven by `suds.yml` in the project root. One file, committed
 Install SUDS via Composer:
 
 ```bash
-composer require bounteous/suds
+composer require bounteous-inc/suds
 ```
 
 SUDS belongs in `require`, not `require-dev`. Like Drush itself, it is an operational tool: `suds:update` runs on production servers, `suds:deploy` runs in CI pipelines, and both need to be present in the deployed vendor directory. Adding it to `require-dev` would exclude it from artifact builds and break server-side execution.
@@ -41,7 +50,7 @@ Drush discovers the commands automatically via the `extra.drush.services` entry 
 **Adding SUDS to a new project:**
 
 ```bash
-composer require bounteous/suds
+composer require bounteous-inc/suds
 drush suds:init    # creates suds.yml and prompts for a project name
 drush suds:doctor  # verifies the environment is correctly configured
 ```

@@ -1,8 +1,9 @@
 {
-    "name": "bounteous/suds",
+    "name": "bounteous-inc/suds",
     "description": "An opinionated orchestrator for Drupal site development workflows.",
     "license": "GPL-2.0-or-later",
     "type": "drupal-drush",
+    "version": "1.0.0",
     "keywords": [
         "drupal",
         "drush",
@@ -21,6 +22,11 @@
             "role": "Original Author"
         }
     ],
+    "support": {
+        "issues": "https://github.com/Bounteous-Inc/suds/issues",
+        "source": "https://github.com/Bounteous-Inc/suds",
+        "security": "https://github.com/Bounteous-Inc/suds/security/advisories"
+    },
     "require": {
         "php": ">=8.3",
         "drush/drush": "^13.0"
@@ -31,8 +37,10 @@
         "drupal/coder": "^8.3",
         "drupal/core-recommended": "^10.4 || ^11.0",
         "ergebnis/composer-normalize": "^2.0",
+        "mglaman/phpstan-drupal": "^2.1",
         "php-parallel-lint/php-parallel-lint": "^1.4",
         "phpro/grumphp": "^2.5",
+        "phpstan/extension-installer": "^1.4",
         "phpstan/phpstan": "^2.0",
         "phpstan/phpstan-deprecation-rules": "^2.0",
         "phpstan/phpstan-phpunit": "^2.0",
@@ -57,7 +65,9 @@
             "dealerdirect/phpcodesniffer-composer-installer": true,
             "drupal/core-composer-scaffold": true,
             "ergebnis/composer-normalize": true,
-            "phpro/grumphp": true
+            "phpro/grumphp": true,
+            "phpstan/extension-installer": true,
+            "symfony/runtime": true
         },
         "policy": {
             "advisories": {
@@ -102,6 +112,7 @@
     },
     "scripts": {
         "analyze": "phpstan analyze --no-progress --memory-limit=512M",
+        "check": "grumphp run",
         "lint": "phpcs",
         "lint:fix": "phpcbf",
         "sut:si": "vendor/bin/drush --root=sut site:install minimal --sites-subdir=default --db-url=${UNISH_DB_URL:-sqlite://sites/default/files/.ht.sqlite} --account-pass=admin --yes",
@@ -114,6 +125,5 @@
             "@analyze",
             "@test:unit"
         ]
-    },
-    "version": "0.1.1"
+    }
 }

@@ -1,7 +1,5 @@
-includes:
-    - vendor/phpstan/phpstan-phpunit/extension.neon
-    - vendor/phpstan/phpstan-deprecation-rules/rules.neon
-
+# mglaman/phpstan-drupal (Drupal-aware service/hook analysis), phpstan-phpunit,
+# and phpstan-deprecation-rules are all auto-registered by phpstan/extension-installer.
 parameters:
     level: 8
     paths:
@@ -9,3 +7,10 @@ parameters:
         - tests
     excludePaths:
         - vendor
+    ignoreErrors:
+        # These tests parse arbitrary Drush CLI output to assert it's valid YAML —
+        # they aren't part of Drupal's config-storage layer, so the rule's rationale
+        # (match Drupal's own parse flags/exception handling) doesn't apply here.
+        -
+            identifier: drupal.symfonyYamlParse
+            path: tests/*

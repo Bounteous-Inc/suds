@@ -59,22 +59,16 @@ grumphp:
       level: warning
 
     # Enforce Conventional Commits on the subject line.
-    # Format: <type>[optional scope]: <description>
+    # Format: <type>[optional scope][!]: <description>
+    #
+    # type_scope_conventions cannot express the `!` breaking-change marker, so
+    # the convention is enforced as an explicit matcher instead.
+    # multiline: false anchors the matcher to the subject line (the first line).
     git_commit_message:
       enforce_capitalized_subject: false
       enforce_single_lined_subject: true
       max_subject_width: 100
       max_body_width: 0
-      type_scope_conventions:
-        types:
-          - feat
-          - fix
-          - docs
-          - style
-          - refactor
-          - perf
-          - test
-          - build
-          - ci
-          - chore
-          - revert
+      multiline: false
+      matchers:
+        Conventional Commit: '/^(?:(?:fixup|squash|amend)! )?(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(?:\([^)]+\))?!?: \S/'

@@ -11,8 +11,8 @@
  * If a version argument is supplied it is written to composer.json.
  * If omitted, the version is read from composer.json and echoed (no-op sync).
  *
- * This script is called by the Bitbucket release pipeline. It can also be run
- * locally after manually editing composer.json:
+ * This script is called by the GitHub Actions release workflow. It can also
+ * be run locally after manually editing composer.json:
  *   php scripts/sync-version.php
  */
 

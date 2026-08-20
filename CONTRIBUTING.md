@@ -11,7 +11,7 @@ Thank you for your interest in contributing to SUDS!
 ## Setup
 
 ```bash
-git clone <REPO_URL>
+git clone git@github.com:Bounteous-Inc/suds.git
 cd suds
 composer install
 composer grumphp:init
@@ -68,10 +68,10 @@ Releases are automated. Maintainers do not run any local release commands.
 
 ### How it works
 
-Every CI-green merge to `main` triggers the release step in Bitbucket Pipelines:
+Every successful CI run on `main` triggers the [Release workflow](.github/workflows/release.yml) via GitHub Actions:
 
-- **Any regular merge** — the pipeline computes the next version using [git-cliff](https://git-cliff.org/) (based on Conventional Commits since the last tag), updates `CHANGELOG.md` and the `version` field in `composer.json`, then opens a `release/X.Y.Z` pull request. If that PR already exists it is force-pushed with refreshed content.
-- **Merging a `release/X.Y.Z` PR** — the pipeline detects the release commit and pushes the `vX.Y.Z` tag. No CHANGELOG or version changes are made.
+- **Any regular merge** — the workflow computes the next version using [git-cliff](https://git-cliff.org/) (based on Conventional Commits since the last tag), updates `CHANGELOG.md` and the `version` field in `composer.json`, then opens a `release/X.Y.Z` pull request. If that PR already exists it is force-pushed with refreshed content. If no version-worthy commits landed since the last tag, no release PR is opened.
+- **Merging a `release/X.Y.Z` PR** — the workflow detects the release commit (via the GitHub API, not the commit message) and pushes the `vX.Y.Z` tag. No CHANGELOG or version changes are made.
 
 Version bumping follows Conventional Commits: `feat` bumps minor, `fix` bumps patch, a breaking change (`!` or `BREAKING CHANGE` footer) bumps major.
 
@@ -80,8 +80,8 @@ Version bumping follows Conventional Commits: `feat` bumps minor, `fix` bumps pa
 When a release PR appears:
 
 1. Review `CHANGELOG.md` — confirm the version and entries look correct.
-2. Merge the PR. The pipeline tags automatically; no manual steps needed.
+2. Merge the PR. The workflow tags automatically; no manual steps needed.
 
 ### Prerequisites
 
-The `RELEASE_TOKEN` repository variable must be set in Bitbucket Pipelines with an access token that has repository write scope (push tags and branches, open pull requests).
+None — the release workflow uses the built-in `GITHUB_TOKEN`, no additional secrets required.
