@@ -127,6 +127,7 @@ deploy:
     - phpcs.xml.dist
     - phpstan.neon
     - phpunit.xml.dist
+    - sites/*/files/
     - suds.ci.yml
     - tests/
 
