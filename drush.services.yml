@@ -35,3 +35,7 @@ services:
     class: \Bounteous\Suds\Drush\Commands\DeployCommands
     tags:
       - { name: drush.command }
+  bounteous.suds.deps_update_commands:
+    class: \Bounteous\Suds\Drush\Commands\DepsUpdateCommands
+    tags:
+      - { name: drush.command }

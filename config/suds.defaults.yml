@@ -154,6 +154,25 @@ update:
     # complete (e.g. frontend asset compilation).
     post_update: []
 
+deps_update:
+  composer:
+    # Packages to update, grouped into separate `composer update` passes run
+    # in order (e.g. core first, then contrib). Each inner list is one pass;
+    # an empty inner list means an unrestricted `composer update`. Overridden
+    # entirely by the `packages` argument to suds:deps-update when given.
+    groups:
+      - ['drupal/core-recommended', 'drupal/core-dev', 'drupal/core-composer-scaffold']
+      - ['drupal/*']
+
+  # Skip the config:export step regardless of composer/drush changes.
+  skip_config_export: false
+
+  hooks:
+    # Shell commands to run before any composer update pass.
+    pre_deps_update: []
+    # Shell commands to run after config:export completes.
+    post_deps_update: []
+
 setup:
   # Drupal recipes to apply after site install, in order (requires Drupal 10.3+).
   # Each entry is a path to a recipe directory, relative to the project root.

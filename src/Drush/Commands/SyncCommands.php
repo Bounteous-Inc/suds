@@ -110,11 +110,7 @@ class SyncCommands extends DrushCommands implements SiteAliasManagerAwareInterfa
     }
 
     // Install/update Composer dependencies.
-    if ($this->findExecutable('composer') === NULL) {
-      throw new \RuntimeException(
-        'composer not found on PATH. Install Composer and re-run, or run `drush suds:doctor` to check your environment.',
-      );
-    }
+    $this->requireExecutable('composer');
     $this->io()->note('Installing Composer dependencies');
     $this->runShellCommand('composer install', $projectRoot);
 
