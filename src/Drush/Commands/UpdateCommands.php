@@ -81,10 +81,7 @@ class UpdateCommands extends DrushCommands implements SiteAliasManagerAwareInter
       $this->runShellCommand($cmd, $projectRoot);
     }
 
-    // Strip suds:update's own options before forwarding: redispatchOptions()
-    // includes them, and the child Drush commands do not define them.
-    $drushOptions = $this->redispatchOptions();
-    unset($drushOptions['reconcile-site-uuid']);
+    $drushOptions = $this->redispatchOptions(['reconcile-site-uuid']);
 
     // Rebuild caches.
     $this->runDrushCommand($alias, 'cache:rebuild', [], $drushOptions);

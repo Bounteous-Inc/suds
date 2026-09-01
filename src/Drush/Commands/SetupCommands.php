@@ -65,11 +65,9 @@ class SetupCommands extends DrushCommands implements SiteAliasManagerAwareInterf
     // drush site:install already prompts before wiping an existing database, so
     // we do not need a separate guard here.
     //
-    // Unset suds:setup-specific options so they are not forwarded to
-    // site:install which does not define them. Profile is passed as a
-    // positional argument; existing-config is re-added below when set.
-    $siOptions = $this->redispatchOptions();
-    unset($siOptions['profile'], $siOptions['existing-config']);
+    // Profile is passed as a positional argument; existing-config is re-added
+    // below when set.
+    $siOptions = $this->redispatchOptions(['profile', 'existing-config']);
     if ($options['existing-config']) {
       $siOptions['existing-config'] = TRUE;
     }

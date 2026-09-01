@@ -199,7 +199,7 @@ class TestableFilesCommands extends FilesCommands {
    *
    * Returns empty array in integration tests — no Drush container is present.
    */
-  protected function redispatchOptions(): array {
+  protected function redispatchOptions(array $except = []): array {
     return [];
   }
 

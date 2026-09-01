@@ -79,14 +79,21 @@ trait ProcessHelperTrait {
   /**
    * Returns options to forward to child drush processes.
    *
+   * Drush::redispatchOptions() includes the calling command's own options,
+   * which children reject as unknown — so every command with options must
+   * exclude them here before forwarding.
+   *
    * Extracted as a protected method so unit tests can override it without
    * requiring a fully initialized Drush DI container.
+   *
+   * @param list<string> $except
+   *   Option names to remove — the calling command's own @option names.
    *
    * @return array<string, mixed>
    *   Options array suitable for passing to ProcessManager::drush().
    */
-  protected function redispatchOptions(): array {
-    return Drush::redispatchOptions();
+  protected function redispatchOptions(array $except = []): array {
+    return array_diff_key(Drush::redispatchOptions(), array_flip($except));
   }
 
   /**
