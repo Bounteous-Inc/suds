@@ -143,6 +143,10 @@ deploy:
     post_deploy: []
 
 update:
+  # Overwrite the site UUID with the config sync value when they differ, instead
+  # of failing. Only enable where config sync is authoritative for the project.
+  reconcile_site_uuid: false
+
   hooks:
     # Shell commands to run before cache rebuild, DB updates, and config import.
     pre_update: []

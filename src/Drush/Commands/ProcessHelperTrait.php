@@ -47,16 +47,53 @@ trait ProcessHelperTrait {
   }
 
   /**
+   * Dispatches a Drush sub-command and returns its captured STDOUT.
+   *
+   * Unlike runDrushCommand(), output is captured and returned rather than
+   * streamed, for callers that need to read the result (e.g. `drush status
+   * --format=json` or `drush config:get --format=string`).
+   *
+   * @param \Consolidation\SiteAlias\SiteAlias $alias
+   *   The site alias to dispatch against (typically getSelf()).
+   * @param string $cmd
+   *   The Drush command name (e.g. 'status', 'config:get').
+   * @param array<mixed> $args
+   *   Positional arguments for the command.
+   * @param array<string, mixed> $opts
+   *   Options to pass to the command.
+   *
+   * @return string
+   *   The trimmed STDOUT of the command.
+   */
+  protected function runDrushCommandCapture(
+    SiteAlias $alias,
+    string $cmd,
+    array $args = [],
+    array $opts = [],
+  ): string {
+    $process = $this->processManager()->drush($alias, $cmd, $args, $opts);
+    $process->mustRun();
+    return trim($process->getOutput());
+  }
+
+  /**
    * Returns options to forward to child drush processes.
+   *
+   * Drush::redispatchOptions() includes the calling command's own options,
+   * which children reject as unknown — so every command with options must
+   * exclude them here before forwarding.
    *
    * Extracted as a protected method so unit tests can override it without
    * requiring a fully initialized Drush DI container.
    *
+   * @param list<string> $except
+   *   Option names to remove — the calling command's own @option names.
+   *
    * @return array<string, mixed>
    *   Options array suitable for passing to ProcessManager::drush().
    */
-  protected function redispatchOptions(): array {
-    return Drush::redispatchOptions();
+  protected function redispatchOptions(array $except = []): array {
+    return array_diff_key(Drush::redispatchOptions(), array_flip($except));
   }
 
   /**

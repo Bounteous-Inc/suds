@@ -429,8 +429,34 @@ update:
       - drush search-api:index
 ```
 
+**Site UUID mismatches.** Drupal refuses to import configuration when the site's UUID differs from the one recorded in `system.site.yml` in the config sync directory, because a mismatch normally means the configuration was exported from a *different site*. Since `config:import` also deletes configuration absent from the source, silently overwriting the UUID would suppress the very signal that prevents one site's config being imported over another. `suds:update` therefore stops with an explanation of the likely causes and how to proceed. The check runs before database updates are applied, so an aborted update leaves the database untouched rather than half-updated.
+
+The usual cause is installing fresh instead of installing from the committed configuration. Prefer fixing that at the source:
+
+```bash
+drush suds:setup --existing-config
+```
+
+Where config sync is genuinely authoritative — for example ephemeral CI environments that install fresh and are then brought up to date from config — opt into automatic reconciliation:
+
+```yaml
+# suds.yml
+update:
+  reconcile_site_uuid: true
+```
+
+```bash
+# Or for a single run
+drush suds:update --reconcile-site-uuid
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--reconcile-site-uuid` | disabled | Overwrite a mismatched site UUID with the config sync value instead of failing |
+
 | Config key | Default | Description |
 |---|---|---|
+| `update.reconcile_site_uuid` | `false` | Overwrite the site UUID with the config sync value when they differ, instead of failing |
 | `update.hooks.pre_update` | `[]` | Commands to run before caches, DB updates, and config import |
 | `update.hooks.post_update` | `[]` | Commands to run after caches, DB updates, and config import complete |
 

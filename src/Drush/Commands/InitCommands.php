@@ -234,17 +234,17 @@ class InitCommands extends DrushCommands implements SiteAliasManagerAwareInterfa
   /**
    * Returns redispatch options with suds:init-specific flags removed.
    *
-   * Prevents suds:init's own options (--name, --drupal-root, --skip-quality,
-   * --skip-ci, --ci-provider) from being forwarded via redispatchOptions() to
-   * child commands that do not define them.
-   *
    * @return array<string, mixed>
    *   Filtered options suitable for passing to child drush processes.
    */
   private function initSubCommandOptions(): array {
-    $opts = $this->redispatchOptions();
-    unset($opts['name'], $opts['drupal-root'], $opts['skip-quality'], $opts['skip-ci'], $opts['ci-provider']);
-    return $opts;
+    return $this->redispatchOptions([
+      'name',
+      'drupal-root',
+      'skip-quality',
+      'skip-ci',
+      'ci-provider',
+    ]);
   }
 
 }

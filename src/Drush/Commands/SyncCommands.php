@@ -157,19 +157,20 @@ class SyncCommands extends DrushCommands implements SiteAliasManagerAwareInterfa
   /**
    * Returns redispatch options with sync-specific flags removed.
    *
-   * Prevents suds:sync's own options (--skip-sanitize, --force-files,
-   * --skip-files, --db-file, --latest) from being forwarded via
-   * Drush::redispatchOptions() to child commands that do not accept them
-   * (e.g. suds:update, suds:db:sanitize). --db-file and --latest are
-   * re-added explicitly only when dispatching suds:db:sync.
+   * --db-file and --latest are re-added explicitly only when dispatching
+   * suds:db:sync.
    *
    * @return array<string, mixed>
    *   Filtered options suitable for passing to child drush processes.
    */
   private function syncSubCommandOptions(): array {
-    $opts = $this->redispatchOptions();
-    unset($opts['skip-sanitize'], $opts['force-files'], $opts['skip-files'], $opts['db-file'], $opts['latest']);
-    return $opts;
+    return $this->redispatchOptions([
+      'skip-sanitize',
+      'force-files',
+      'skip-files',
+      'db-file',
+      'latest',
+    ]);
   }
 
 }

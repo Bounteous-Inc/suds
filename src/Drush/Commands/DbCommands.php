@@ -133,10 +133,9 @@ class DbCommands extends DrushCommands implements SiteAliasManagerAwareInterface
       if (!file_exists($file)) {
         throw new \InvalidArgumentException(sprintf('SQL file not found: %s', $file));
       }
-      // Strip suds:db:sync-specific options before forwarding to sql:drop;
       // sql:drop does not accept --db-file or --latest.
       $dropOpts = array_merge(
-        array_diff_key($this->redispatchOptions(), array_flip(['db-file', 'latest'])),
+        $this->redispatchOptions(['db-file', 'latest']),
         ['yes' => TRUE],
       );
       $this->runDrushCommand($alias, 'sql:drop', [], $dropOpts);

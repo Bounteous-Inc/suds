@@ -526,7 +526,13 @@ class SyncCommandsTest extends TestCase {
       ->getMock();
     $command->method('io')->willReturn($this->createMock(DrushStyle::class));
     $command->method('siteAliasManager')->willReturn($mockAliasManager);
-    $command->method('redispatchOptions')->willReturn($redispatchOptions);
+    // Mirror the real redispatchOptions(): honour the $except list, so tests
+    // exercise the exclusions each command declares rather than bypassing the
+    // filtering that now lives in ProcessHelperTrait.
+    $command->method('redispatchOptions')
+      ->willReturnCallback(
+        static fn (array $except = []): array => array_diff_key($redispatchOptions, array_flip($except)),
+      );
     $command->method('findExecutable')->willReturn($composerPath);
     $command->method('runDrushCommand')
       ->willReturnCallback(
