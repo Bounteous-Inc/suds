@@ -71,39 +71,91 @@ class UpdateCommandsIntegrationTest extends IntegrationTestCase {
    * updatedb, and config:import twice, in that order.
    */
   public function testUpdateDispatchesExpectedSubcommandsInOrder(): void {
-    $mockProcess = $this->buildMockProcess();
-
-    $mockAlias = $this->createMock(SiteAlias::class);
-    $mockAliasManager = $this->getMockBuilder(SiteAliasManager::class)
-      ->disableOriginalConstructor()
-      ->onlyMethods(['getSelf'])
-      ->getMock();
-    $mockAliasManager->method('getSelf')->willReturn($mockAlias);
-
-    $dispatchedCommands = [];
-    $mockProcessManager = $this->getMockBuilder(ProcessManager::class)
-      ->disableOriginalConstructor()
-      ->onlyMethods(['drush'])
-      ->getMock();
-    $mockProcessManager->method('drush')
-      ->willReturnCallback(
-        static function (mixed $a, string $cmd) use ($mockProcess, &$dispatchedCommands): ProcessBase {
-          $dispatchedCommands[] = $cmd;
-          return $mockProcess;
-        }
-      );
-
-    $command = new TestableUpdateCommands();
-    $command->setProcessManager($mockProcessManager);
-    $command->setSiteAliasManager($mockAliasManager);
+    $dispatched = [];
+    $command = $this->buildDispatchRecordingCommand($dispatched);
 
     $tester = $this->buildTester($command);
     $tester->run(['command' => 'suds:update']);
 
     $this->assertSame(
       ['cache:rebuild', 'updatedb', 'config:import', 'config:import'],
-      $dispatchedCommands,
+      $dispatched,
     );
+  }
+
+  /**
+   * Tests that a mismatched site UUID fails the command by default.
+   */
+  public function testUpdateFailsOnMismatchedSiteUuidByDefault(): void {
+    $dispatched = [];
+    $command = $this->buildDispatchRecordingCommand($dispatched);
+    $command->setSiteUuids('sync-uuid', 'active-uuid');
+
+    $tester = $this->buildTester($command);
+    $exitCode = $tester->run(['command' => 'suds:update']);
+
+    $this->assertNotSame(0, $exitCode);
+    // The check runs before updatedb, so the database is never touched.
+    $this->assertSame(['cache:rebuild'], $dispatched);
+  }
+
+  /**
+   * Tests that --reconcile-site-uuid dispatches config:set before importing.
+   */
+  public function testUpdateReconcilesSiteUuidWhenFlagPassed(): void {
+    $dispatched = [];
+    $command = $this->buildDispatchRecordingCommand($dispatched);
+    $command->setSiteUuids('sync-uuid', 'active-uuid');
+
+    $tester = $this->buildTester($command);
+    $exitCode = $tester->run([
+      'command' => 'suds:update',
+      '--reconcile-site-uuid' => TRUE,
+    ]);
+
+    $this->assertSame(0, $exitCode);
+    $this->assertSame(
+      ['cache:rebuild', 'config:set', 'updatedb', 'config:import', 'config:import'],
+      $dispatched,
+    );
+  }
+
+  /**
+   * Builds a command that records every dispatched Drush sub-command name.
+   *
+   * @param list<string> $dispatched
+   *   Reference populated with dispatched command names, in call order.
+   *
+   * @return \Bounteous\Suds\Tests\Integration\Commands\TestableUpdateCommands
+   *   The configured command instance.
+   */
+  private function buildDispatchRecordingCommand(array &$dispatched): TestableUpdateCommands {
+    $command = new TestableUpdateCommands();
+    $this->injectUpdateMocks($command, $dispatched);
+    return $command;
+  }
+
+  /**
+   * Builds a mock ConfigLoaderInterface with update hook config.
+   *
+   * @param list<string> $preUpdate
+   *   Commands for update.hooks.pre_update.
+   * @param list<string> $postUpdate
+   *   Commands for update.hooks.post_update.
+   *
+   * @return \Bounteous\Suds\Config\ConfigLoaderInterface
+   *   A mock config loader.
+   */
+  private function makeConfigLoader(array $preUpdate = [], array $postUpdate = []): ConfigLoaderInterface {
+    $mockLoader = $this->createMock(ConfigLoaderInterface::class);
+    $mockLoader->method('getProjectRoot')->willReturn('/tmp');
+    $mockLoader->method('load')->willReturn([
+      'update' => [
+        'reconcile_site_uuid' => FALSE,
+        'hooks' => ['pre_update' => $preUpdate, 'post_update' => $postUpdate],
+      ],
+    ]);
+    return $mockLoader;
   }
 
   /**
@@ -113,20 +165,9 @@ class UpdateCommandsIntegrationTest extends IntegrationTestCase {
    * to runShellCommand() in order.
    */
   public function testUpdateRunsPreUpdateHooks(): void {
-    $mockLoader = $this->createMock(ConfigLoaderInterface::class);
-    $mockLoader->method('getProjectRoot')->willReturn('/tmp');
-    $mockLoader->method('load')->willReturn([
-      'update' => [
-        'hooks' => [
-          'pre_update'  => ['echo before-1', 'echo before-2'],
-          'post_update' => [],
-        ],
-      ],
-    ]);
-
     $command = new TestableUpdateCommands();
     $this->injectUpdateMocks($command);
-    $command->setConfigLoader($mockLoader);
+    $command->setConfigLoader($this->makeConfigLoader(['echo before-1', 'echo before-2']));
 
     $tester = $this->buildTester($command);
     $tester->run(['command' => 'suds:update']);
@@ -141,20 +182,9 @@ class UpdateCommandsIntegrationTest extends IntegrationTestCase {
    * to runShellCommand() in order.
    */
   public function testUpdateRunsPostUpdateHooks(): void {
-    $mockLoader = $this->createMock(ConfigLoaderInterface::class);
-    $mockLoader->method('getProjectRoot')->willReturn('/tmp');
-    $mockLoader->method('load')->willReturn([
-      'update' => [
-        'hooks' => [
-          'pre_update'  => [],
-          'post_update' => ['echo after-1', 'echo after-2'],
-        ],
-      ],
-    ]);
-
     $command = new TestableUpdateCommands();
     $this->injectUpdateMocks($command);
-    $command->setConfigLoader($mockLoader);
+    $command->setConfigLoader($this->makeConfigLoader([], ['echo after-1', 'echo after-2']));
 
     $tester = $this->buildTester($command);
     $tester->run(['command' => 'suds:update']);
@@ -167,8 +197,14 @@ class UpdateCommandsIntegrationTest extends IntegrationTestCase {
    *
    * @param \Bounteous\Suds\Drush\Commands\UpdateCommands $command
    *   The command instance to configure.
+   * @param list<string>|null $dispatched
+   *   When passed, populated with each dispatched Drush sub-command name in
+   *   call order.
+   *
+   * @param-out list<string> $dispatched
    */
-  private function injectUpdateMocks(UpdateCommands $command): void {
+  private function injectUpdateMocks(UpdateCommands $command, ?array &$dispatched = NULL): void {
+    $dispatched ??= [];
     $mockProcess = $this->buildMockProcess();
 
     $mockAlias = $this->createMock(SiteAlias::class);
@@ -182,7 +218,13 @@ class UpdateCommandsIntegrationTest extends IntegrationTestCase {
       ->disableOriginalConstructor()
       ->onlyMethods(['drush'])
       ->getMock();
-    $mockProcessManager->method('drush')->willReturn($mockProcess);
+    $mockProcessManager->method('drush')
+      ->willReturnCallback(
+        static function (mixed $alias, string $cmd) use ($mockProcess, &$dispatched): ProcessBase {
+          $dispatched[] = $cmd;
+          return $mockProcess;
+        }
+      );
 
     $command->setProcessManager($mockProcessManager);
     $command->setSiteAliasManager($mockAliasManager);
@@ -207,6 +249,20 @@ class TestableUpdateCommands extends UpdateCommands {
   private array $ranShellCommands = [];
 
   /**
+   * UUID returned from getConfigSyncUuid(); NULL skips the UUID check.
+   *
+   * @var string|null
+   */
+  private ?string $syncUuid = NULL;
+
+  /**
+   * UUID returned from getActiveSiteUuid().
+   *
+   * @var string
+   */
+  private string $activeUuid = 'active-uuid';
+
+  /**
    * Returns shell commands that were passed to runShellCommand().
    *
    * @return list<string>
@@ -214,6 +270,38 @@ class TestableUpdateCommands extends UpdateCommands {
    */
   public function getRanShellCommands(): array {
     return $this->ranShellCommands;
+  }
+
+  /**
+   * Sets the UUIDs the overridden getters return.
+   *
+   * @param string|null $syncUuid
+   *   Config sync UUID, or NULL to simulate nothing exported.
+   * @param string $activeUuid
+   *   Active site UUID.
+   */
+  public function setSiteUuids(?string $syncUuid, string $activeUuid): void {
+    $this->syncUuid   = $syncUuid;
+    $this->activeUuid = $activeUuid;
+  }
+
+  /**
+   * {@inheritdoc}
+   *
+   * Returns the injected UUID instead of dispatching `drush status` and
+   * reading system.site.yml off disk.
+   */
+  protected function getConfigSyncUuid(SiteAlias $alias, array $opts): ?string {
+    return $this->syncUuid;
+  }
+
+  /**
+   * {@inheritdoc}
+   *
+   * Returns the injected UUID instead of dispatching `drush config:get`.
+   */
+  protected function getActiveSiteUuid(SiteAlias $alias, array $opts): string {
+    return $this->activeUuid;
   }
 
   /**

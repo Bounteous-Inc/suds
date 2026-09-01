@@ -47,6 +47,36 @@ trait ProcessHelperTrait {
   }
 
   /**
+   * Dispatches a Drush sub-command and returns its captured STDOUT.
+   *
+   * Unlike runDrushCommand(), output is captured and returned rather than
+   * streamed, for callers that need to read the result (e.g. `drush status
+   * --format=json` or `drush config:get --format=string`).
+   *
+   * @param \Consolidation\SiteAlias\SiteAlias $alias
+   *   The site alias to dispatch against (typically getSelf()).
+   * @param string $cmd
+   *   The Drush command name (e.g. 'status', 'config:get').
+   * @param array<mixed> $args
+   *   Positional arguments for the command.
+   * @param array<string, mixed> $opts
+   *   Options to pass to the command.
+   *
+   * @return string
+   *   The trimmed STDOUT of the command.
+   */
+  protected function runDrushCommandCapture(
+    SiteAlias $alias,
+    string $cmd,
+    array $args = [],
+    array $opts = [],
+  ): string {
+    $process = $this->processManager()->drush($alias, $cmd, $args, $opts);
+    $process->mustRun();
+    return trim($process->getOutput());
+  }
+
+  /**
    * Returns options to forward to child drush processes.
    *
    * Extracted as a protected method so unit tests can override it without
