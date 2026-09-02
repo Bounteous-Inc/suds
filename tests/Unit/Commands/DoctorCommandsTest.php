@@ -6,6 +6,8 @@ namespace Bounteous\Suds\Tests\Unit\Commands;
 
 use Bounteous\Suds\Config\ConfigLoaderInterface;
 use Bounteous\Suds\Drush\Commands\DoctorCommands;
+use Consolidation\SiteAlias\SiteAlias;
+use Consolidation\SiteAlias\SiteAliasManagerInterface;
 use Drush\Style\DrushStyle;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
@@ -585,6 +587,31 @@ class DoctorCommandsTest extends TestCase {
     ], $io, [])->doctor();
 
     $this->removeDirectory($projectRoot);
+  }
+
+  /**
+   * Verifies drushAliasExists() resolves aliases via the alias manager.
+   *
+   * The rest of the suite stubs drushAliasExists(), so this is the only test
+   * exercising its body. It must not shell out: `drush` is not guaranteed to
+   * be on PATH when SUDS is installed as a Composer dependency.
+   */
+  public function testDrushAliasExistsUsesAliasManager(): void {
+    $aliasManager = $this->createMock(SiteAliasManagerInterface::class);
+    $aliasManager->method('get')
+      ->willReturnCallback(
+        fn (string $name) => $name === '@prod' ? $this->createMock(SiteAlias::class) : FALSE,
+      );
+
+    $command = $this->getMockBuilder(DoctorCommands::class)
+      ->onlyMethods(['siteAliasManager'])
+      ->getMock();
+    $command->method('siteAliasManager')->willReturn($aliasManager);
+
+    $check = new \ReflectionMethod($command, 'drushAliasExists');
+
+    $this->assertTrue($check->invoke($command, '@prod'));
+    $this->assertFalse($check->invoke($command, '@nope'));
   }
 
   /**

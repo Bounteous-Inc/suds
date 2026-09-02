@@ -6,13 +6,16 @@ namespace Bounteous\Suds\Drush\Commands;
 
 use Bounteous\Suds\Config\ConfigLoaderAwareTrait;
 use Bounteous\Suds\Config\ConfigLoaderInterface;
+use Consolidation\SiteAlias\SiteAliasManagerAwareTrait;
 use Drush\Commands\DrushCommands;
+use Drush\SiteAlias\SiteAliasManagerAwareInterface;
 
 /**
  * Drush commands for validating a SUDS-managed environment.
  */
-class DoctorCommands extends DrushCommands {
+class DoctorCommands extends DrushCommands implements SiteAliasManagerAwareInterface {
 
+  use SiteAliasManagerAwareTrait;
   use ConfigLoaderAwareTrait;
   use ProcessHelperTrait;
 
@@ -327,9 +330,12 @@ class DoctorCommands extends DrushCommands {
   /**
    * Returns TRUE when the given Drush alias is defined in alias files.
    *
-   * Invokes `drush site:alias` in a subprocess; a zero exit code means the
-   * alias is recognised. No network connection is made — this only reads
-   * local alias configuration files.
+   * Resolves the alias through Drush's own SiteAliasManager, which reads the
+   * same local alias files `drush site:alias` would. No subprocess and no
+   * network connection.
+   *
+   * Uses get() rather than getAlias(): both resolve '@name' identically, but
+   * get() is the one documented to return FALSE for an unknown alias.
    *
    * @param string $alias
    *   The Drush alias to check, e.g. '@prod'.
@@ -338,9 +344,7 @@ class DoctorCommands extends DrushCommands {
    *   TRUE if the alias is defined, FALSE otherwise.
    */
   protected function drushAliasExists(string $alias): bool {
-    // phpcs:ignore
-    exec('drush site:alias ' . escapeshellarg($alias) . ' 2>/dev/null', $output, $exitCode);
-    return $exitCode === 0;
+    return $this->siteAliasManager()->get($alias) !== FALSE;
   }
 
   /**
