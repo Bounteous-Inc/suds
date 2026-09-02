@@ -19,6 +19,16 @@ composer grumphp:init
 
 `composer grumphp:init` installs git hooks that run linting, static analysis, and unit tests before each commit.
 
+### Dependencies
+
+`composer.lock` is committed, so `composer install` gives you the same versions CI uses. It has no effect on projects that depend on SUDS — Composer only reads the root package's lock file — but it keeps local and CI runs reproducible and makes every dependency bump a reviewable commit.
+
+Resolution is pinned to `config.platform.php` 8.3, the minimum supported version, so the lock installs cleanly on every PHP version in the CI matrix. Take updates in their own commit — `composer update`, then commit the lock — rather than folding a lock change into an unrelated PR.
+
+[Dependabot](.github/dependabot.yml) opens those update PRs weekly: runtime dependencies individually, dev tooling grouped. Each one carries a lock diff and runs the full CI matrix, so a breaking upstream release lands in its own PR instead of turning an unrelated build red.
+
+Dependabot only ever moves versions up, so nothing currently exercises the *floors* of the `^` constraints in `composer.json`. They are known not to resolve cleanly today — see the tracking issue — so treat a constraint's lower bound as documentation rather than something CI has verified.
+
 ## Running checks
 
 ```bash
