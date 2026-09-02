@@ -61,23 +61,11 @@ class DbCommands extends DrushCommands implements SiteAliasManagerAwareInterface
     // suffix; the file on disk will be $outputBase . '.gz'.
     $outputBase = $exportDir . '/' . date('Y-m-d-H-i') . '.sql';
 
-    if ($extraFlags !== '') {
-      // Extra flags is a raw string (e.g. --structure-tables-list=cache_*);
-      // fall back to a shell invocation so arbitrary flags can be forwarded
-      // without parsing. Requires drush to be on PATH.
-      $cmd = sprintf(
-        'drush sql:dump --gzip --result-file=%s %s',
-        escapeshellarg($outputBase),
-        $extraFlags,
-      );
-      $this->runShellCommand($cmd, $projectRoot);
-    }
-    else {
-      $this->runDrushCommand($alias, 'sql:dump', [], array_merge(
-        $this->redispatchOptions(),
-        ['gzip' => TRUE, 'result-file' => $outputBase],
-      ));
-    }
+    $this->runDrushCommand($alias, 'sql:dump', [], array_merge(
+      $this->redispatchOptions(),
+      ['gzip' => TRUE, 'result-file' => $outputBase],
+      $this->parseExtraFlags($extraFlags),
+    ));
 
     $this->io()->success(sprintf('Database exported to %s', $outputBase . '.gz'));
   }
@@ -133,30 +121,27 @@ class DbCommands extends DrushCommands implements SiteAliasManagerAwareInterface
       if (!file_exists($file)) {
         throw new \InvalidArgumentException(sprintf('SQL file not found: %s', $file));
       }
+      // Rewrite the dump before dropping anything: if this fails, the local
+      // database is still intact. Dropping first would leave the developer
+      // with an empty database and no way back.
+      $importFile = $this->stripCollation($file);
+
       // sql:drop does not accept --db-file or --latest.
       $dropOpts = array_merge(
         $this->redispatchOptions(['db-file', 'latest']),
         ['yes' => TRUE],
       );
-      $this->runDrushCommand($alias, 'sql:drop', [], $dropOpts);
-      // Use sql:connect rather than sql:cli: it returns a direct connection
-      // command string (e.g. `sqlite3 /path/db`) so large files are fed
-      // straight to the database binary rather than going through Drush's
-      // stdin buffering.
-      //
-      // Strip COLLATE NOCASE_UTF8 before importing. Drupal's SQLite PDO driver
-      // registers this collation at connection time, but the underlying
-      // database binary (sqlite3) does not, so re-importing a Drupal SQLite
-      // dump fails without this substitution. Stripping is safe: all data is
-      // preserved and the column sorts under SQLite's default binary collation.
-      $importCmd = str_ends_with($file, '.gz')
-        ? sprintf('gunzip -c %s | sed "s/ COLLATE NOCASE_UTF8//g" | $(drush sql:connect)', escapeshellarg($file))
-        : sprintf('sed "s/ COLLATE NOCASE_UTF8//g" %s | $(drush sql:connect)', escapeshellarg($file));
-      // Run the import from the Drupal root so that $(drush sql:connect)
-      // can auto-detect the site root and any relative database paths
-      // (e.g. SQLite's "default/files/.ht.sqlite") resolve correctly.
-      $importCwd = $alias->hasRoot() ? $alias->root() : (string) getcwd();
-      $this->runShellCommand($importCmd, $importCwd);
+
+      try {
+        $this->runDrushCommand($alias, 'sql:drop', [], $dropOpts);
+        // sql:query --file redirects the file straight into the database
+        // binary (see Drush's SqlBase::alwaysQuery()), so large dumps are not
+        // buffered through Drush's stdin.
+        $this->runDrushCommand($alias, 'sql:query', [], ['file' => $importFile]);
+      }
+      finally {
+        @unlink($importFile);
+      }
     }
     elseif ($source !== '') {
       $this->runDrushCommand($alias, 'sql:sync', [$source, '@self'], $this->redispatchOptions());
@@ -277,6 +262,104 @@ class DbCommands extends DrushCommands implements SiteAliasManagerAwareInterface
       static fn (string $a, string $b): int => (int) filemtime($b) <=> (int) filemtime($a),
     );
     return $files[0];
+  }
+
+  /**
+   * Parses sync.db.dump_extra_flags into a Drush options array.
+   *
+   * Only flag-shaped tokens are accepted (--flag or --flag=value). The value
+   * used to be interpolated into a shell string, which made every suds.yml a
+   * command-injection vector and required drush on PATH; parsing it here keeps
+   * the dispatch in-process and fails loudly on anything unexpected.
+   *
+   * @param string $flags
+   *   The raw configured flag string, possibly empty.
+   *
+   * @return array<string, string|true>
+   *   Drush options suitable for merging into a dispatch.
+   *
+   * @throws \InvalidArgumentException
+   *   When a token is not a long-form flag.
+   */
+  private function parseExtraFlags(string $flags): array {
+    $flags = trim($flags);
+    if ($flags === '') {
+      return [];
+    }
+
+    $options = [];
+    foreach (preg_split('/\s+/', $flags) ?: [] as $token) {
+      if (!str_starts_with($token, '--') || $token === '--') {
+        throw new \InvalidArgumentException(sprintf(
+          'Invalid token "%s" in sync.db.dump_extra_flags. Expected --flag or --flag=value.',
+          $token,
+        ));
+      }
+      $token = substr($token, 2);
+      if (!str_contains($token, '=')) {
+        $options[$token] = TRUE;
+        continue;
+      }
+      [$name, $value] = explode('=', $token, 2);
+      $options[$name] = $value;
+    }
+
+    return $options;
+  }
+
+  /**
+   * Copies a SQL dump with COLLATE NOCASE_UTF8 removed.
+   *
+   * Drupal's SQLite PDO driver registers this collation at connection time,
+   * but the underlying database binary (sqlite3) does not, so re-importing a
+   * Drupal SQLite dump fails without this substitution. Stripping is safe: all
+   * data is preserved and the column sorts under SQLite's default binary
+   * collation.
+   *
+   * Gzipped dumps are decompressed here rather than by piping through gunzip,
+   * so the import depends on no external binaries.
+   *
+   * @param string $file
+   *   Absolute path to the dump, optionally gzipped.
+   *
+   * @return string
+   *   Absolute path to a temporary rewritten dump. The caller owns the file
+   *   and is responsible for deleting it.
+   *
+   * @throws \RuntimeException
+   *   When the dump cannot be read or the rewritten copy cannot be written.
+   */
+  protected function stripCollation(string $file): string {
+    $isGzipped = str_ends_with($file, '.gz');
+    $source    = $isGzipped ? @gzopen($file, 'rb') : @fopen($file, 'rb');
+    if ($source === FALSE) {
+      throw new \RuntimeException(sprintf('Failed to read SQL file: %s', $file));
+    }
+
+    $target = tempnam(sys_get_temp_dir(), 'suds_import_');
+    if ($target === FALSE) {
+      $isGzipped ? gzclose($source) : fclose($source);
+      throw new \RuntimeException('Failed to create a temporary file for the import.');
+    }
+
+    $handle = fopen($target, 'wb');
+    if ($handle === FALSE) {
+      $isGzipped ? gzclose($source) : fclose($source);
+      @unlink($target);
+      throw new \RuntimeException(sprintf('Failed to write temporary import file: %s', $target));
+    }
+
+    try {
+      while (($line = $isGzipped ? gzgets($source) : fgets($source)) !== FALSE) {
+        fwrite($handle, str_replace(' COLLATE NOCASE_UTF8', '', $line));
+      }
+    }
+    finally {
+      fclose($handle);
+      $isGzipped ? gzclose($source) : fclose($source);
+    }
+
+    return $target;
   }
 
 }
