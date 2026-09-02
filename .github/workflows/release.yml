@@ -163,7 +163,12 @@ jobs:
           git commit -m "chore(release): ${NEXT_VERSION}"
           git push --force origin "$TARGET_BRANCH"
 
-          if ! gh pr view "$TARGET_BRANCH" >/dev/null 2>&1; then
+          # `gh pr view` matches by branch name regardless of state, so a
+          # branch reused from a prior, now-closed release PR would look
+          # like it already has an open PR and silently skip creating one.
+          EXISTING_OPEN=$(gh pr list --repo "${{ github.repository }}" --state open \
+            --head "$TARGET_BRANCH" --json number --jq '.[0].number')
+          if [ -z "$EXISTING_OPEN" ]; then
             gh pr create \
               --title "chore(release): ${NEXT_VERSION}" \
               --base main \
