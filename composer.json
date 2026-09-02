@@ -3,7 +3,7 @@
     "description": "An opinionated orchestrator for Drupal site development workflows.",
     "license": "GPL-2.0-or-later",
     "type": "drupal-drush",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "keywords": [
         "drupal",
         "drush",
