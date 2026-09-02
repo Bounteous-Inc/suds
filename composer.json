@@ -69,6 +69,9 @@
             "phpstan/extension-installer": true,
             "symfony/runtime": true
         },
+        "platform": {
+            "php": "8.3.0"
+        },
         "policy": {
             "advisories": {
                 "block": false
