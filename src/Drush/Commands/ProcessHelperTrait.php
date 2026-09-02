@@ -112,6 +112,32 @@ trait ProcessHelperTrait {
   }
 
   /**
+   * Finds an executable on the system PATH, or fails with setup guidance.
+   *
+   * @param string $binary
+   *   The binary name to search for (e.g. 'composer').
+   *
+   * @return string
+   *   The absolute path to the binary.
+   *
+   * @throws \RuntimeException
+   *   When the binary is not found on PATH.
+   */
+  protected function requireExecutable(string $binary): string {
+    $path = $this->findExecutable($binary);
+    if ($path === NULL) {
+      throw new \RuntimeException(
+        sprintf(
+          '%s not found on PATH. Install %s and re-run, or run `drush suds:doctor` to check your environment.',
+          $binary,
+          ucfirst($binary),
+        ),
+      );
+    }
+    return $path;
+  }
+
+  /**
    * Runs an arbitrary shell command, streaming output and failing on error.
    *
    * STDOUT is forwarded via io()->write(). STDERR is routed through the error

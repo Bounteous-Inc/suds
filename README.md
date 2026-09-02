@@ -126,6 +126,7 @@ Every orchestration command exposes pre and post hooks — lists of shell comman
 | `suds:setup` | `setup.hooks.pre_setup`, `setup.hooks.post_setup` |
 | `suds:sync` | `sync.hooks.pre_sync`, `sync.hooks.post_sync` |
 | `suds:update` | `update.hooks.pre_update`, `update.hooks.post_update` |
+| `suds:deps-update` | `deps_update.hooks.pre_deps_update`, `deps_update.hooks.post_deps_update` |
 | `suds:deploy` | `deploy.hooks.pre_deploy`, `deploy.hooks.post_deploy` |
 
 **Example: configure local settings and seed content after a sync**
@@ -459,6 +460,49 @@ drush suds:update --reconcile-site-uuid
 | `update.reconcile_site_uuid` | `false` | Overwrite the site UUID with the config sync value when they differ, instead of failing |
 | `update.hooks.pre_update` | `[]` | Commands to run before caches, DB updates, and config import |
 | `update.hooks.post_update` | `[]` | Commands to run after caches, DB updates, and config import complete |
+
+### `suds:deps-update`
+
+Routine maintenance: update Composer dependencies, apply database updates, rebuild caches, and export any resulting config drift so it isn't left uncommitted.
+
+```bash
+drush suds:deps-update
+```
+
+This is distinct from `suds:update`: `suds:update` imports config into a deployed environment and runs after every artifact deployment regardless of whether dependencies changed, while `suds:deps-update` runs outward from a dev environment to prepare a commit (`composer.lock` + config changes) for review. The two are not otherwise related, which is why `suds:deps-update` isn't namespaced under `update`.
+
+By default, Composer updates run in two passes — Drupal core first, then contrib — configured as groups in `deps_update.composer.groups`. Each inner list is one `composer update` pass, run in order:
+
+```yaml
+# suds.yml
+deps_update:
+  composer:
+    groups:
+      - ['drupal/core-recommended', 'drupal/core-dev', 'drupal/core-composer-scaffold']
+      - ['drupal/*']
+```
+
+Pass a `packages` argument to scope a single ad hoc run instead, overriding the configured groups entirely:
+
+```bash
+drush suds:deps-update drupal/core-recommended,drupal/core-dev
+```
+
+```bash
+# Update dependencies without exporting configuration
+drush suds:deps-update --skip-cex
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--skip-cex` | disabled | Skip the config export step regardless of config |
+
+| Config key | Default | Description |
+|---|---|---|
+| `deps_update.composer.groups` | core, then `drupal/*` | Packages to update, grouped into ordered `composer update` passes |
+| `deps_update.skip_config_export` | `false` | Skip the config export step regardless of the `--skip-cex` flag |
+| `deps_update.hooks.pre_deps_update` | `[]` | Commands to run before any composer update pass |
+| `deps_update.hooks.post_deps_update` | `[]` | Commands to run after config export completes |
 
 ### `suds:db:export`
 
