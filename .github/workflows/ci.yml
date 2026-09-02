@@ -33,9 +33,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ steps.composer-cache.outputs.dir }}
-          key: ${{ runner.os }}-composer-${{ matrix.php-version }}-${{ hashFiles('**/composer.json') }}
+          key: ${{ runner.os }}-composer-${{ matrix.php-version }}-${{ hashFiles('composer.lock') }}
           restore-keys: ${{ runner.os }}-composer-${{ matrix.php-version }}-
 
+      # Installs from the committed lock file, so every run on a given commit
+      # resolves identically. Newer upstream releases are picked up by the
+      # scheduled deps.yml workflow, not here.
       - name: Install dependencies
         run: composer install --no-interaction --prefer-dist --no-progress
 

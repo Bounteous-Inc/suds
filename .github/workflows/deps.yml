@@ -1,0 +1,125 @@
+name: Dependencies
+
+# CI installs from the committed lock file, so it no longer notices new
+# upstream releases. This workflow deliberately ignores the lock and resolves
+# fresh, which is what catches a breaking change in Drush, Drupal core, or the
+# dev tooling before a contributor runs into it locally.
+#
+# It does not commit anything: `drush suds:deps-update` is the command for
+# actually taking an update. A red run here is a signal to go run it.
+on:
+  schedule:
+    # Mondays, 06:00 UTC.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: deps-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  resolve:
+    name: ${{ matrix.dependencies }} / PHP ${{ matrix.php-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php-version: ['8.3', '8.4', '8.5']
+        dependencies: [highest]
+        include:
+          # The floors of the ^ constraints in composer.json are exercised by
+          # neither the lock file nor the highest-version runs. Check them on
+          # the minimum supported PHP, where they are most likely to matter.
+          - php-version: '8.3'
+            dependencies: lowest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-version }}
+          extensions: pdo, pdo_sqlite, gd, zip
+          coverage: none
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-deps-${{ matrix.php-version }}-${{ matrix.dependencies }}
+          restore-keys: ${{ runner.os }}-composer-deps-${{ matrix.php-version }}-
+
+      # Resolution still honours config.platform.php (8.3), so the versions
+      # picked here are the same ones a supported install would get.
+      - name: Update dependencies (${{ matrix.dependencies }})
+        run: |
+          if [ "${{ matrix.dependencies }}" = 'lowest' ]; then
+            composer update --no-interaction --prefer-dist --no-progress \
+              --prefer-lowest --prefer-stable
+          else
+            composer update --no-interaction --prefer-dist --no-progress
+          fi
+
+      - name: Show resolved versions
+        run: composer show --locked
+
+      - name: Quality (grumphp)
+        run: composer check
+
+      - name: Integration tests
+        run: composer test:integration
+
+      - name: Provision SUT
+        run: composer sut:si
+
+      - name: Functional tests
+        run: composer test:functional
+
+  report:
+    name: Report failure
+    runs-on: ubuntu-latest
+    needs: resolve
+    # Only for scheduled runs: a manual run is already being watched by whoever
+    # started it, and does not need an issue filed against it.
+    if: failure() && github.event_name == 'schedule'
+
+    steps:
+      # Comments on the existing report rather than opening a second one, so a
+      # dependency that stays broken for weeks does not file an issue a week.
+      - name: Open or update tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TITLE: 'Scheduled dependency check is failing'
+        run: |
+          existing=$(gh issue list --repo "$REPO" --state open --search "$TITLE in:title" \
+            --json number --jq '.[0].number // empty')
+
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$REPO" \
+              --body "Still failing as of the latest scheduled run: $RUN_URL"
+            exit 0
+          fi
+
+          body=$(cat <<EOF
+          The weekly dependency resolution check failed: $RUN_URL
+
+          Newly released dependency versions break the build. CI on \`main\` is
+          unaffected, since it installs from the committed lock file — this is a
+          heads-up, not an outage.
+
+          To reproduce locally: \`composer update\` then \`composer check\`.
+          EOF
+          )
+          gh issue create --repo "$REPO" --title "$TITLE" --body "$body"

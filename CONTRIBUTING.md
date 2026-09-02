@@ -19,6 +19,14 @@ composer grumphp:init
 
 `composer grumphp:init` installs git hooks that run linting, static analysis, and unit tests before each commit.
 
+### Dependencies
+
+`composer.lock` is committed, so `composer install` gives you the same versions CI uses. It has no effect on projects that depend on SUDS — Composer only reads the root package's lock file — but it keeps local and CI runs reproducible and makes every dependency bump a reviewable commit.
+
+Resolution is pinned to `config.platform.php` 8.3, the minimum supported version, so the lock installs cleanly on every PHP version in the CI matrix. Take updates with `drush suds:deps-update` (or `composer update`) in their own commit, rather than folding a lock change into an unrelated PR.
+
+The scheduled [Dependencies workflow](.github/workflows/deps.yml) resolves fresh every week — highest versions across the PHP matrix, plus a `--prefer-lowest` run to exercise the floors of the `^` constraints. It files an issue when new upstream releases break the build; `main` itself is unaffected, since CI installs from the lock.
+
 ## Running checks
 
 ```bash

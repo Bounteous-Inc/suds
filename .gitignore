@@ -1,5 +1,8 @@
-# Composer — libraries should not commit their lock file.
-/composer.lock
+# Composer. The lock file IS committed: it has no effect on projects that
+# depend on SUDS (Composer only reads the root package's lock), but it makes
+# local and CI runs reproducible and turns every dependency bump into a
+# reviewable commit. The scheduled deps workflow tests against newer versions
+# so upstream breakage still surfaces.
 /vendor/
 
 # PHPUnit cache.
