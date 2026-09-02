@@ -519,7 +519,7 @@ Project-specific dump flags that your environment requires — such as `--single
 | Config key | Default | Description |
 |---|---|---|
 | `sync.db.export_dir` | `db-exports` | Directory (relative to project root) for exported dumps |
-| `sync.db.dump_extra_flags` | _(empty)_ | Extra flags appended verbatim to `drush sql:dump` (e.g. `--extra-dump=--single-transaction`) |
+| `sync.db.dump_extra_flags` | _(empty)_ | Extra options forwarded to `sql:dump` (e.g. `--extra-dump=--single-transaction`). Each token must be `--flag` or `--flag=value`; anything else is rejected |
 
 ### `suds:db:sync`
 

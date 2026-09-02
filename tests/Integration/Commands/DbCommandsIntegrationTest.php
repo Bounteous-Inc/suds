@@ -71,14 +71,18 @@ class DbCommandsIntegrationTest extends IntegrationTestCase {
    * Tests that suds:db:sync --latest exits cleanly with an export present.
    *
    * Injects a config loader pointing to a temp directory that contains a
-   * fixture .sql.gz file, so resolveLatestExport() finds it successfully.
-   * runShellCommand() is stubbed so no real import runs.
+   * fixture .sql.gz file, so resolveLatestExport() finds it successfully. The
+   * dump is really gzipped, because the import path decompresses it for real
+   * before dispatching sql:query through the mocked ProcessManager.
    */
   public function testDbSyncWithLatestExitsCleanly(): void {
     $tmpDir    = $this->createTempDir('suds_db_latest_int_');
     $exportDir = $tmpDir . '/db-exports';
     mkdir($exportDir, 0755);
-    file_put_contents($exportDir . '/2024-01-01-12-00.sql.gz', '-- fixture');
+    file_put_contents(
+      $exportDir . '/2024-01-01-12-00.sql.gz',
+      (string) gzencode('-- fixture'),
+    );
 
     try {
       $mockLoader = $this->createMock(ConfigLoaderInterface::class);
@@ -134,8 +138,8 @@ class DbCommandsIntegrationTest extends IntegrationTestCase {
   /**
    * Tests suds:db:sync exits cleanly when --db-file points to a SQL file.
    *
-   * The TestableDbCommands subclass stubs runShellCommand so no real import
-   * is executed; we only verify exit code and command registration.
+   * Dispatches go through the mocked ProcessManager, so no real database is
+   * touched; we only verify exit code and command registration.
    */
   public function testDbSyncFromFileExitsCleanly(): void {
     $tmpFile = tempnam(sys_get_temp_dir(), 'suds_db_int_') . '.sql';
@@ -147,6 +151,56 @@ class DbCommandsIntegrationTest extends IntegrationTestCase {
         '--db-file'  => $tmpFile,
       ]);
       $this->assertSame(0, $exitCode);
+    }
+    finally {
+      @unlink($tmpFile);
+    }
+  }
+
+  /**
+   * Tests that --db-file imports by dispatching sql:drop then sql:query.
+   *
+   * The import must go through Drush's ProcessManager rather than a shell
+   * pipeline calling a `drush` binary resolved from PATH.
+   */
+  public function testDbSyncFromFileDispatchesSqlQuery(): void {
+    $tmpFile = tempnam(sys_get_temp_dir(), 'suds_db_int_') . '.sql';
+    file_put_contents($tmpFile, '-- empty fixture');
+
+    $mockProcess = $this->buildMockProcess();
+
+    $mockAlias = $this->createMock(SiteAlias::class);
+    $mockAliasManager = $this->getMockBuilder(SiteAliasManager::class)
+      ->disableOriginalConstructor()
+      ->onlyMethods(['getSelf'])
+      ->getMock();
+    $mockAliasManager->method('getSelf')->willReturn($mockAlias);
+
+    $dispatched = [];
+    $mockProcessManager = $this->getMockBuilder(ProcessManager::class)
+      ->disableOriginalConstructor()
+      ->onlyMethods(['drush'])
+      ->getMock();
+    $mockProcessManager->method('drush')
+      ->willReturnCallback(
+        static function (
+          mixed $alias,
+          string $cmd,
+        ) use ($mockProcess, &$dispatched): ProcessBase {
+          $dispatched[] = $cmd;
+          return $mockProcess;
+        }
+      );
+
+    $command = new TestableDbCommands();
+    $command->setProcessManager($mockProcessManager);
+    $command->setSiteAliasManager($mockAliasManager);
+
+    try {
+      $tester = $this->buildTester($command);
+      $tester->run(['command' => 'suds:db:sync', '--db-file' => $tmpFile]);
+
+      $this->assertSame(['sql:drop', 'sql:query'], $dispatched);
     }
     finally {
       @unlink($tmpFile);
@@ -321,8 +375,9 @@ class DbCommandsIntegrationTest extends IntegrationTestCase {
  * Testable subclass of DbCommands for integration tests.
  *
  * Overrides redispatchOptions() to return an empty array so the Drush DI
- * container is not required. Overrides runShellCommand() to a no-op so
- * --db-file import pipelines are not executed against a real database.
+ * container is not required. Every command DbCommands runs now dispatches
+ * through the mocked ProcessManager, so no real database is touched and no
+ * shell command is spawned.
  */
 class TestableDbCommands extends DbCommands {
 
@@ -333,15 +388,6 @@ class TestableDbCommands extends DbCommands {
    */
   protected function redispatchOptions(array $except = []): array {
     return [];
-  }
-
-  /**
-   * {@inheritdoc}
-   *
-   * No-op in integration tests — shell import is not executed.
-   */
-  protected function runShellCommand(string $cmd, string $cwd): void {
-    // Intentionally empty: integration tests do not spawn real subprocesses.
   }
 
 }

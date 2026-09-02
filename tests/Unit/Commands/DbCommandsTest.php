@@ -98,8 +98,8 @@ class DbCommandsTest extends TestCase {
    * Verifies dbSync() dispatches sql:drop and imports when --db-file.
    *
    * When a --db-file option is provided, the command should drop the local
-   * database via sql:drop and then import via a shell pipeline rather than
-   * dispatching sql:sync.
+   * database via sql:drop and then import by dispatching sql:query with a
+   * --file option, rather than dispatching sql:sync or shelling out.
    */
   public function testDbSyncFromFileDropsAndImports(): void {
     $tmpFile = tempnam(sys_get_temp_dir(), 'suds_db_test_') . '.sql';
@@ -108,16 +108,121 @@ class DbCommandsTest extends TestCase {
     try {
       $drushCommands = [];
       $shellCommands = [];
+      $drushOpts     = [];
 
-      $command = $this->buildCommand(drushCommands: $drushCommands, shellCommands: $shellCommands);
+      $command = $this->buildCommand(
+        drushCommands: $drushCommands,
+        shellCommands: $shellCommands,
+        drushOpts: $drushOpts,
+      );
       $command->dbSync('', ['db-file' => $tmpFile, 'latest' => FALSE]);
 
-      $this->assertContains('sql:drop', $drushCommands);
+      $this->assertSame(['sql:drop', 'sql:query'], $drushCommands);
       $this->assertNotContains('sql:sync', $drushCommands);
-      $this->assertCount(1, $shellCommands);
-      $this->assertStringContainsString('sql:connect', $shellCommands[0]);
+      $this->assertArrayHasKey('file', $drushOpts['sql:query']);
+      // The import must not depend on any binary resolved from PATH.
+      $this->assertSame([], $shellCommands);
     }
     finally {
+      @unlink($tmpFile);
+    }
+  }
+
+  /**
+   * Verifies the imported file has COLLATE NOCASE_UTF8 stripped.
+   *
+   * Drupal's SQLite driver registers that collation at connection time, but
+   * the sqlite3 binary does not, so the dump must be rewritten before import.
+   * The rewritten file is deleted once the import returns, so its contents are
+   * captured from inside the dispatch callback.
+   */
+  public function testDbSyncStripsCollationFromImportedFile(): void {
+    $tmpFile = tempnam(sys_get_temp_dir(), 'suds_db_collate_') . '.sql';
+    file_put_contents(
+      $tmpFile,
+      "CREATE TABLE t (name VARCHAR(255) COLLATE NOCASE_UTF8 NOT NULL);\n",
+    );
+
+    try {
+      $imported = NULL;
+      $command  = $this->buildCommand();
+      $command->method('runDrushCommand')
+        ->willReturnCallback(
+          static function (mixed $alias, string $cmd, array $args, array $opts = []) use (&$imported): void {
+            if ($cmd === 'sql:query') {
+              $imported = file_get_contents((string) $opts['file']);
+            }
+          }
+        );
+
+      $command->dbSync('', ['db-file' => $tmpFile, 'latest' => FALSE]);
+
+      $this->assertSame(
+        "CREATE TABLE t (name VARCHAR(255) NOT NULL);\n",
+        $imported,
+      );
+    }
+    finally {
+      @unlink($tmpFile);
+    }
+  }
+
+  /**
+   * Verifies a gzipped dump is decompressed and stripped without gunzip.
+   */
+  public function testDbSyncStripsCollationFromGzippedFile(): void {
+    $tmpFile = tempnam(sys_get_temp_dir(), 'suds_db_collate_gz_') . '.sql.gz';
+    file_put_contents(
+      $tmpFile,
+      (string) gzencode("INSERT INTO t VALUES ('a' COLLATE NOCASE_UTF8);\n"),
+    );
+
+    try {
+      $imported = NULL;
+      $command  = $this->buildCommand();
+      $command->method('runDrushCommand')
+        ->willReturnCallback(
+          static function (mixed $alias, string $cmd, array $args, array $opts = []) use (&$imported): void {
+            if ($cmd === 'sql:query') {
+              $imported = file_get_contents((string) $opts['file']);
+            }
+          }
+        );
+
+      $command->dbSync('', ['db-file' => $tmpFile, 'latest' => FALSE]);
+
+      $this->assertSame("INSERT INTO t VALUES ('a');\n", $imported);
+    }
+    finally {
+      @unlink($tmpFile);
+    }
+  }
+
+  /**
+   * Verifies an unreadable dump aborts before the database is dropped.
+   *
+   * Regression test: the import used to run after sql:drop, so a failure part
+   * way through left the developer with an empty database and no restore.
+   */
+  public function testDbSyncDoesNotDropWhenDumpCannotBeRead(): void {
+    $tmpFile = tempnam(sys_get_temp_dir(), 'suds_db_unreadable_') . '.sql';
+    file_put_contents($tmpFile, '-- fixture');
+    chmod($tmpFile, 0000);
+
+    try {
+      $drushCommands = [];
+      $command = $this->buildCommand(drushCommands: $drushCommands);
+
+      $this->expectException(\RuntimeException::class);
+      try {
+        $command->dbSync('', ['db-file' => $tmpFile, 'latest' => FALSE]);
+      }
+      finally {
+        $this->assertNotContains('sql:drop', $drushCommands);
+      }
+    }
+    finally {
+      chmod($tmpFile, 0600);
       @unlink($tmpFile);
     }
   }
@@ -132,26 +237,6 @@ class DbCommandsTest extends TestCase {
     $this->expectExceptionMessageMatches('/SQL file not found/');
 
     $command->dbSync('', ['db-file' => '/nonexistent/path/backup.sql', 'latest' => FALSE]);
-  }
-
-  /**
-   * Verifies dbSync() uses gunzip pipeline for .gz files.
-   */
-  public function testDbSyncUsesGunzipPipelineForGzFile(): void {
-    $tmpFile = tempnam(sys_get_temp_dir(), 'suds_db_test_') . '.sql.gz';
-    file_put_contents($tmpFile, '');
-
-    try {
-      $shellCommands = [];
-      $command = $this->buildCommand(shellCommands: $shellCommands);
-      $command->dbSync('', ['db-file' => $tmpFile, 'latest' => FALSE]);
-
-      $this->assertCount(1, $shellCommands);
-      $this->assertStringContainsString('gunzip -c', $shellCommands[0]);
-    }
-    finally {
-      @unlink($tmpFile);
-    }
   }
 
   /**
@@ -347,20 +432,53 @@ class DbCommandsTest extends TestCase {
   }
 
   /**
-   * Verifies dbExport() appends dump_extra_flags to the shell command.
+   * Verifies dbExport() forwards dump_extra_flags as sql:dump options.
    */
   public function testDbExportIncludesExtraFlags(): void {
     $tmpDir = $this->createTempDir('suds_db_export_unit_');
 
     try {
       $shellCommands = [];
-      $command = $this->buildCommand(
-        $this->makeExportConfigLoader($tmpDir, dumpExtraFlags: '--extra-dump=--single-transaction'),
+      $drushOpts     = [];
+      $command       = $this->buildCommand(
+        $this->makeExportConfigLoader(
+          $tmpDir,
+          dumpExtraFlags: '--extra-dump=--single-transaction --structure-tables-list=cache_* --ordered-dump',
+        ),
         shellCommands: $shellCommands,
+        drushOpts: $drushOpts,
       );
       $command->dbExport();
 
-      $this->assertStringContainsString('--extra-dump=--single-transaction', $shellCommands[0] ?? '');
+      $this->assertSame('--single-transaction', $drushOpts['sql:dump']['extra-dump'] ?? NULL);
+      $this->assertSame('cache_*', $drushOpts['sql:dump']['structure-tables-list'] ?? NULL);
+      $this->assertTrue($drushOpts['sql:dump']['ordered-dump'] ?? FALSE);
+      // The export must not depend on any binary resolved from PATH.
+      $this->assertSame([], $shellCommands);
+    }
+    finally {
+      $this->removeDirectory($tmpDir);
+    }
+  }
+
+  /**
+   * Verifies dump_extra_flags rejects anything that is not a flag.
+   *
+   * The value used to be interpolated into a shell string, so shell syntax
+   * silently worked. It is now parsed into Drush options, and a bad token has
+   * to fail loudly rather than be dropped or forwarded as a literal option.
+   */
+  public function testDbExportThrowsOnMalformedExtraFlags(): void {
+    $tmpDir = $this->createTempDir('suds_db_export_unit_');
+
+    try {
+      $command = $this->buildCommand(
+        $this->makeExportConfigLoader($tmpDir, dumpExtraFlags: '--gzip | tee /tmp/pwned'),
+      );
+
+      $this->expectException(\InvalidArgumentException::class);
+      $this->expectExceptionMessage('|');
+      $command->dbExport();
     }
     finally {
       $this->removeDirectory($tmpDir);
@@ -470,7 +588,7 @@ class DbCommandsTest extends TestCase {
    * Verifies dbSync() with --latest imports the most recently modified file.
    *
    * Creates two export files with distinct modification times and verifies
-   * that the shell import command targets the newer one.
+   * that the imported contents come from the newer one.
    */
   public function testDbSyncWithLatestResolvesNewestExport(): void {
     $tmpDir    = $this->createTempDir('suds_db_latest_unit_');
@@ -479,21 +597,26 @@ class DbCommandsTest extends TestCase {
 
     $older = $exportDir . '/2024-01-01-12-00.sql.gz';
     $newer = $exportDir . '/2024-06-01-12-00.sql.gz';
-    file_put_contents($older, '-- older');
-    file_put_contents($newer, '-- newer');
+    file_put_contents($older, (string) gzencode('-- older'));
+    file_put_contents($newer, (string) gzencode('-- newer'));
     touch($older, time() - 3600);
     touch($newer, time());
 
     try {
-      $shellCommands = [];
-      $command = $this->buildCommand(
-        $this->makeExportConfigLoader($tmpDir),
-        shellCommands: $shellCommands,
-      );
+      $imported = NULL;
+      $command  = $this->buildCommand($this->makeExportConfigLoader($tmpDir));
+      $command->method('runDrushCommand')
+        ->willReturnCallback(
+          static function (mixed $alias, string $cmd, array $args, array $opts = []) use (&$imported): void {
+            if ($cmd === 'sql:query') {
+              $imported = file_get_contents((string) $opts['file']);
+            }
+          }
+        );
+
       $command->dbSync('', ['db-file' => '', 'latest' => TRUE]);
 
-      $this->assertCount(1, $shellCommands);
-      $this->assertStringContainsString(basename($newer), $shellCommands[0]);
+      $this->assertSame('-- newer', $imported);
     }
     finally {
       $this->removeDirectory($tmpDir);
@@ -511,6 +634,8 @@ class DbCommandsTest extends TestCase {
    *   Receives positional args keyed by command name.
    * @param list<string> $shellCommands
    *   Receives each shell command string in call order.
+   * @param array<string, array<string, mixed>> $drushOpts
+   *   Receives options keyed by command name.
    *
    * @return \Bounteous\Suds\Drush\Commands\DbCommands&\PHPUnit\Framework\MockObject\MockObject
    *   A configured mock.
@@ -520,6 +645,7 @@ class DbCommandsTest extends TestCase {
     array &$drushCommands = [],
     array &$drushArgs = [],
     array &$shellCommands = [],
+    array &$drushOpts = [],
   ): DbCommands&MockObject {
     $mockAlias = $this->createMock(SiteAlias::class);
     $mockAliasManager = $this->createMock(SiteAliasManagerInterface::class);
@@ -533,9 +659,10 @@ class DbCommandsTest extends TestCase {
     $command->method('redispatchOptions')->willReturn([]);
     $command->method('runDrushCommand')
       ->willReturnCallback(
-        static function (mixed $alias, string $cmd, array $args = []) use (&$drushCommands, &$drushArgs): void {
+        static function (mixed $alias, string $cmd, array $args = [], array $opts = []) use (&$drushCommands, &$drushArgs, &$drushOpts): void {
           $drushCommands[] = $cmd;
           $drushArgs[$cmd] = $args;
+          $drushOpts[$cmd] = $opts;
         }
       );
     $command->method('runShellCommand')
