@@ -82,6 +82,11 @@ deploy:
     # branch name at deploy time.
     branch: '$SUDS_BRANCH-build'
 
+  # Force-push the artifact branch instead of pushing on top of its existing
+  # history. This is an escape hatch for recovering a diverged or corrupted
+  # artifact branch; normal deploys should never need it.
+  force_push: false
+
   # Commit message for the artifact commit. Supports $SUDS_BRANCH,
   # $SUDS_HASH, and $SUDS_SHORT_HASH variable expansion.
   commit_message: 'Deploy $SUDS_BRANCH [$SUDS_SHORT_HASH]'
