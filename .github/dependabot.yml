@@ -20,9 +20,9 @@ updates:
       include: scope
     groups:
       # Dev tooling moves often and is rarely interesting individually; one PR
-      # per week for the lot keeps the queue readable. Runtime dependencies
-      # (drush, drupal/core-recommended) stay ungrouped so a breaking release
-      # is attributable to a single package.
+      # per week for the lot keeps the queue readable. drush/drush — our only
+      # runtime dependency — stays ungrouped so a breaking release is
+      # attributable to a single package.
       dev-dependencies:
         dependency-type: development
 
