@@ -57,3 +57,128 @@ jobs:
 
       - name: Functional tests
         run: composer test:functional
+
+  # Verifies that the *declared* lower bounds of our own direct constraints
+  # actually work, which the lockfile-based job above never exercises.
+  #
+  # Deliberately NOT `composer update --prefer-lowest`: that minimises every
+  # transitive package independently and produces combinations no consumer can
+  # install (e.g. it selects grasmash/yaml-cli 3.2.0, which is incompatible
+  # with the symfony/console that Drupal 11 requires). Pinning our own floors
+  # and letting Composer resolve the rest is what actually tests the support
+  # claim in README.md. See doc/adr/0006-dependency-floor-verification.md.
+  floors:
+    name: Dependency floors (PHP 8.3)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo, pdo_sqlite, gd, zip
+          coverage: none
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer packages
+        uses: actions/cache@v6
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-floors-${{ hashFiles('composer.json') }}
+          restore-keys: ${{ runner.os }}-composer-floors-
+
+      - name: Pin declared floors
+        run: |
+          composer require --no-update --no-interaction \
+            drush/drush:13.3.3 drupal/coder:8.3.28
+          composer update --no-interaction --no-progress
+
+      # Run the checks individually rather than via `composer check`: grumphp's
+      # composer task fails on the composer.json we just mutated on purpose.
+      - name: Lint (phpcs)
+        run: composer lint
+
+      - name: Analyze (phpstan)
+        run: composer analyze
+
+      - name: Unit tests
+        run: composer test:unit
+
+      - name: Integration tests
+        run: composer test:integration
+
+  # Earns back the "Drupal 10.4" support claim. Drupal 10.4 cannot share a
+  # vendor tree with phpunit/phpunit ^11 (core 10.4 requires sebastian/diff ^4,
+  # phpunit 11 requires ^6), so the site is built outside the repo with SUDS
+  # installed into it as a path repository, and the functional suite is pointed
+  # at that site's Drupal root and drush binary.
+  functional-drupal10:
+    name: Functional (Drupal 10.4, PHP 8.3)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: pdo, pdo_sqlite, gd, zip
+          coverage: none
+
+      # The repo's own vendor/ supplies PHPUnit; the SUT below supplies Drupal
+      # and the drush binary under test.
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      # symlink: false so the SUT gets a copy. A symlinked path repo makes the
+      # SUT autoload straight out of the working tree, which blurs which drush
+      # and which vendor tree is actually under test.
+      - name: Build Drupal 10.4 site with SUDS installed
+        run: |
+          composer create-project 'drupal/recommended-project:10.4.*' \
+            "$RUNNER_TEMP/sut10" --no-interaction --no-progress
+          cd "$RUNNER_TEMP/sut10"
+          composer config --no-plugins allow-plugins.composer/installers true
+          composer config --no-plugins allow-plugins.drupal/core-composer-scaffold true
+          composer config repositories.suds \
+            "{\"type\":\"path\",\"url\":\"$GITHUB_WORKSPACE\",\"options\":{\"symlink\":false}}"
+          composer require 'bounteous-inc/suds:*' --no-interaction --no-progress
+
+      - name: Install Drupal
+        run: |
+          "$RUNNER_TEMP/sut10/vendor/bin/drush" --root="$RUNNER_TEMP/sut10/web" \
+            site:install minimal --sites-subdir=default \
+            --db-url=sqlite://sites/default/files/.ht.sqlite \
+            --account-pass=admin --yes
+
+      # Canary: proves the env overrides are in effect and that this drush can
+      # both bootstrap Drupal 10.4 and see SUDS's commands, so a green run
+      # below can't be a false pass against the repo's own drush.
+      - name: Verify SUT wiring
+        env:
+          SUDS_SUT_ROOT: ${{ runner.temp }}/sut10/web
+          SUDS_DRUSH_BIN: ${{ runner.temp }}/sut10/vendor/bin/drush
+        run: |
+          "$SUDS_DRUSH_BIN" --root="$SUDS_SUT_ROOT" status --field=drupal-version
+          "$SUDS_DRUSH_BIN" --root="$SUDS_SUT_ROOT" status --field=drupal-version \
+            | grep -q '^10\.4\.' || { echo 'SUT is not Drupal 10.4'; exit 1; }
+          "$SUDS_DRUSH_BIN" --root="$SUDS_SUT_ROOT" list --filter=suds
+
+      # Only the classes whose behaviour can actually differ between Drupal
+      # majors. The rest just need *a* bootstrappable Drupal so suds:* commands
+      # register, and are already covered on Drupal 11 by the `test` job.
+      - name: Functional tests (Drupal-dependent subset)
+        env:
+          SUDS_SUT_ROOT: ${{ runner.temp }}/sut10/web
+          SUDS_DRUSH_BIN: ${{ runner.temp }}/sut10/vendor/bin/drush
+        run: |
+          vendor/bin/phpunit --testsuite functional \
+            --filter '(Update|Setup|Db|Sync|DepsUpdate)CommandsFunctionalTest'
