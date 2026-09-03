@@ -312,13 +312,22 @@ class DoctorCommandsIntegrationTest extends IntegrationTestCase {
   public function testDoctorWarnsOnConfigTypeError(): void {
     mkdir($this->projectRoot . '/web/core', 0755, TRUE);
     // Write raw YAML so sync.db.sanitize is a string instead of a bool.
-    file_put_contents(
-      $this->projectRoot . '/suds.yml',
-      "project:\n  name: Integration Test\n"
-        . "drupal:\n  root: web\n"
-        . "sync:\n  db:\n    sanitize: 'yes'\n"
-        . "deploy:\n  repo:\n    url: 'git@example.com:example.git'\n",
-    );
+    $yaml = <<<'YAML'
+    project:
+      name: Integration Test
+
+    drupal:
+      root: web
+
+    sync:
+      db:
+        sanitize: 'yes'
+
+    deploy:
+      repo:
+        url: 'git@example.com:example.git'
+    YAML;
+    file_put_contents($this->projectRoot . '/suds.yml', $yaml . "\n");
 
     $this->commandInstance->setConfigLoader(
       new ConfigLoader($this->projectRoot, $this->packageRoot()),
