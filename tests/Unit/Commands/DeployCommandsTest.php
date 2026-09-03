@@ -9,6 +9,7 @@ use Bounteous\Suds\Drush\Commands\DeployCommands;
 use Bounteous\Suds\Tests\Support\ExposedDeployCommands;
 use Drush\Style\DrushStyle;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
@@ -632,9 +633,15 @@ class DeployCommandsTest extends TestCase {
   }
 
   /**
-   * Verifies the artifact branch is pushed without --force by default.
+   * Verifies --force is appended only when deploy.force_push is true.
+   *
+   * @param bool $forcePush
+   *   The deploy.force_push value to configure.
+   * @param bool $expectForce
+   *   Whether the push command should contain --force.
    */
-  public function testDeployPushesWithoutForceByDefault(): void {
+  #[DataProvider('forcePushProvider')]
+  public function testDeployPushHonorsForcePushConfig(bool $forcePush, bool $expectForce): void {
     $callLog = [];
 
     $command = $this->getMockBuilder(DeployCommands::class)
@@ -648,39 +655,31 @@ class DeployCommandsTest extends TestCase {
       ->willReturnCallback(static function (string $cmd) use (&$callLog): void {
         $callLog[] = $cmd;
       });
-    $command->setConfigLoader($this->makeConfigLoader());
+    $command->setConfigLoader($this->makeConfigLoader(forcePush: $forcePush));
 
     $command->deploy();
 
     $pushCmds = array_filter($callLog, static fn(string $c) => str_contains($c, 'git push origin') && str_contains($c, 'main-build'));
     $this->assertNotEmpty($pushCmds, 'Branch push was not called.');
-    $this->assertStringNotContainsString('--force', reset($pushCmds));
+    if ($expectForce) {
+      $this->assertStringContainsString('--force', reset($pushCmds));
+    }
+    else {
+      $this->assertStringNotContainsString('--force', reset($pushCmds));
+    }
   }
 
   /**
-   * Verifies --force is appended to the push when deploy.force_push is true.
+   * Data provider for testDeployPushHonorsForcePushConfig().
+   *
+   * @return array<string, array{0: bool, 1: bool}>
+   *   Map of case name to [forcePush, expectForce].
    */
-  public function testDeployPushesWithForceWhenConfigured(): void {
-    $callLog = [];
-
-    $command = $this->getMockBuilder(DeployCommands::class)
-      ->onlyMethods(['io', 'getCurrentBranch', 'getHeadHash', 'buildArtifact', 'runShellCommand'])
-      ->getMock();
-    $command->method('io')->willReturn($this->createMock(DrushStyle::class));
-    $command->method('getCurrentBranch')->willReturn('main');
-    $command->method('getHeadHash')->willReturn('deadbeef12345678deadbeef12345678deadbeef');
-    $command->method('buildArtifact')->willReturn('/tmp/artifact-test');
-    $command->method('runShellCommand')
-      ->willReturnCallback(static function (string $cmd) use (&$callLog): void {
-        $callLog[] = $cmd;
-      });
-    $command->setConfigLoader($this->makeConfigLoader(forcePush: TRUE));
-
-    $command->deploy();
-
-    $pushCmds = array_filter($callLog, static fn(string $c) => str_contains($c, 'git push origin') && str_contains($c, 'main-build'));
-    $this->assertNotEmpty($pushCmds, 'Branch push was not called.');
-    $this->assertStringContainsString('--force', reset($pushCmds));
+  public static function forcePushProvider(): array {
+    return [
+      'default (no force)' => [FALSE, FALSE],
+      'force_push enabled' => [TRUE, TRUE],
+    ];
   }
 
   /**
