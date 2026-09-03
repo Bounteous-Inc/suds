@@ -30,6 +30,13 @@ class ExposedDeployCommands extends DeployCommands {
   public array $manifestLog = [];
 
   /**
+   * Value returned by remoteBranchExists().
+   *
+   * @var bool
+   */
+  public bool $remoteBranchExistsResult = FALSE;
+
+  /**
    * {@inheritdoc}
    */
   protected function getCurrentBranch(string $projectRoot): string {
@@ -41,6 +48,13 @@ class ExposedDeployCommands extends DeployCommands {
    */
   protected function getHeadHash(string $projectRoot): string {
     return 'abc1234def56789abc1234def56789abc1234def5';
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  protected function remoteBranchExists(string $repoUrl, string $branch): bool {
+    return $this->remoteBranchExistsResult;
   }
 
   /**

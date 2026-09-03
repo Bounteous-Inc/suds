@@ -9,6 +9,7 @@ use Bounteous\Suds\Drush\Commands\DeployCommands;
 use Bounteous\Suds\Tests\Support\ExposedDeployCommands;
 use Drush\Style\DrushStyle;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
@@ -452,6 +453,33 @@ class DeployCommandsTest extends TestCase {
   }
 
   /**
+   * Verifies buildArtifact() builds on top of an existing remote branch.
+   *
+   * Fetches and checks out on top of the branch instead of creating a
+   * fresh one.
+   */
+  public function testBuildArtifactFetchesExistingBranch(): void {
+    $exposed = $this->makeExposedCommand();
+    $exposed->remoteBranchExistsResult = TRUE;
+    $artifactDir = $exposed->callBuildArtifact('/tmp/project', 'git@example.com:repo.git', 'feature-x-build');
+
+    $this->assertDirectoryExists($artifactDir);
+    $this->removeDir($artifactDir);
+
+    $cmds = array_column($exposed->shellLog, 'cmd');
+    $fetchCmd = array_filter($cmds, static fn(string $c) => str_contains($c, 'git fetch origin'));
+    $checkoutCmd = array_filter($cmds, static fn(string $c) => str_contains($c, 'git checkout -B'));
+    $freshCheckoutCmd = array_filter($cmds, static fn(string $c) => str_contains($c, 'git checkout -b'));
+
+    $this->assertNotEmpty($fetchCmd, 'git fetch was not called.');
+    $this->assertStringContainsString('feature-x-build', reset($fetchCmd));
+    $this->assertNotEmpty($checkoutCmd, 'git checkout -B was not called.');
+    $this->assertStringContainsString('feature-x-build', reset($checkoutCmd));
+    $this->assertStringContainsString('origin/feature-x-build', reset($checkoutCmd));
+    $this->assertEmpty($freshCheckoutCmd, 'A fresh branch should not be created when the branch already exists.');
+  }
+
+  /**
    * Verifies buildArtifact() includes rsync --exclude= args for each path.
    */
   public function testBuildArtifactIncludesExcludeArgs(): void {
@@ -585,7 +613,7 @@ class DeployCommandsTest extends TestCase {
     $tagIdx = NULL;
     $tagPushIdx = NULL;
     foreach ($callLog as $i => $cmd) {
-      if (str_contains($cmd, 'git push') && str_contains($cmd, '--force')) {
+      if (str_contains($cmd, 'git push') && str_contains($cmd, 'main-build')) {
         $pushIdx = $i;
       }
       if (str_contains($cmd, 'git tag')) {
@@ -602,6 +630,56 @@ class DeployCommandsTest extends TestCase {
     $this->assertStringContainsString('v1.2.3', $callLog[$tagIdx]);
     $this->assertGreaterThan($pushIdx, $tagIdx, 'git tag must run after branch push.');
     $this->assertGreaterThan($tagIdx, $tagPushIdx, 'git push tag must run after git tag.');
+  }
+
+  /**
+   * Verifies --force is appended only when deploy.force_push is true.
+   *
+   * @param bool $forcePush
+   *   The deploy.force_push value to configure.
+   * @param bool $expectForce
+   *   Whether the push command should contain --force.
+   */
+  #[DataProvider('forcePushProvider')]
+  public function testDeployPushHonorsForcePushConfig(bool $forcePush, bool $expectForce): void {
+    $callLog = [];
+
+    $command = $this->getMockBuilder(DeployCommands::class)
+      ->onlyMethods(['io', 'getCurrentBranch', 'getHeadHash', 'buildArtifact', 'runShellCommand'])
+      ->getMock();
+    $command->method('io')->willReturn($this->createMock(DrushStyle::class));
+    $command->method('getCurrentBranch')->willReturn('main');
+    $command->method('getHeadHash')->willReturn('deadbeef12345678deadbeef12345678deadbeef');
+    $command->method('buildArtifact')->willReturn('/tmp/artifact-test');
+    $command->method('runShellCommand')
+      ->willReturnCallback(static function (string $cmd) use (&$callLog): void {
+        $callLog[] = $cmd;
+      });
+    $command->setConfigLoader($this->makeConfigLoader(forcePush: $forcePush));
+
+    $command->deploy();
+
+    $pushCmds = array_filter($callLog, static fn(string $c) => str_contains($c, 'git push origin') && str_contains($c, 'main-build'));
+    $this->assertNotEmpty($pushCmds, 'Branch push was not called.');
+    if ($expectForce) {
+      $this->assertStringContainsString('--force', reset($pushCmds));
+    }
+    else {
+      $this->assertStringNotContainsString('--force', reset($pushCmds));
+    }
+  }
+
+  /**
+   * Data provider for testDeployPushHonorsForcePushConfig().
+   *
+   * @return array<string, array{0: bool, 1: bool}>
+   *   Map of case name to [forcePush, expectForce].
+   */
+  public static function forcePushProvider(): array {
+    return [
+      'default (no force)' => [FALSE, FALSE],
+      'force_push enabled' => [TRUE, TRUE],
+    ];
   }
 
   /**
@@ -786,6 +864,8 @@ class DeployCommandsTest extends TestCase {
    *   The deploy.manifest value.
    * @param string $manifestFile
    *   The deploy.manifest_file value.
+   * @param bool $forcePush
+   *   The deploy.force_push value.
    *
    * @return \Bounteous\Suds\Config\ConfigLoaderInterface
    *   A mock config loader.
@@ -803,6 +883,7 @@ class DeployCommandsTest extends TestCase {
     array $postDeployHooks = [],
     bool $manifest = FALSE,
     string $manifestFile = 'SUDS_BUILD.txt',
+    bool $forcePush = FALSE,
   ): ConfigLoaderInterface {
     $loader = $this->createMock(ConfigLoaderInterface::class);
     $loader->method('getProjectRoot')->willReturn('/tmp/project');
@@ -812,6 +893,7 @@ class DeployCommandsTest extends TestCase {
           'url'    => $repoUrl,
           'branch' => $repoBranch,
         ],
+        'force_push' => $forcePush,
         'commit_message'  => $commitMessage,
         'git' => [
           'name'  => $gitName,

@@ -27,8 +27,9 @@ class DeployCommands extends DrushCommands {
   /**
    * Build a production artifact and push it to the deployment repository.
    *
-   * Assembles a clean artifact directory, runs build steps, commits, and
-   * force-pushes to the configured deployment repository. Environment
+   * Assembles a clean artifact directory, runs build steps, and commits on
+   * top of the artifact branch's existing history (if any) before pushing
+   * to the configured deployment repository. Environment
    * variables $SUDS_BRANCH, $SUDS_HASH, and $SUDS_SHORT_HASH are
    * set before hook and step execution so they may be referenced in
    * commit_message, branch names, and shell commands.
@@ -159,10 +160,11 @@ class DeployCommands extends DrushCommands {
         sprintf('git commit --allow-empty -m %s', escapeshellarg($commitMessage)),
         $artifactDir,
       );
-      $this->runShellCommand(
-        sprintf('git push origin %s --force', escapeshellarg($artifactBranch)),
-        $artifactDir,
-      );
+      $pushCommand = sprintf('git push origin %s', escapeshellarg($artifactBranch));
+      if ($config['deploy']['force_push'] ?? FALSE) {
+        $pushCommand .= ' --force';
+      }
+      $this->runShellCommand($pushCommand, $artifactDir);
 
       // Create and push tag on artifact repository if --tag is specified.
       if (!empty($options['tag'])) {
@@ -218,6 +220,35 @@ class DeployCommands extends DrushCommands {
   }
 
   /**
+   * Checks whether a branch exists on the remote deployment repository.
+   *
+   * Used to decide whether the artifact should be built on top of the
+   * branch's existing history or as a brand-new branch. Runs even in
+   * dry-run mode since it is read-only and needed to determine which
+   * commands would be printed.
+   *
+   * @param string $repoUrl
+   *   URL of the deployment repository.
+   * @param string $branch
+   *   Branch name to check for.
+   *
+   * @return bool
+   *   TRUE if the branch exists on the remote.
+   */
+  protected function remoteBranchExists(string $repoUrl, string $branch): bool {
+    exec(
+      sprintf(
+        'git ls-remote --exit-code %s %s',
+        escapeshellarg($repoUrl),
+        escapeshellarg('refs/heads/' . $branch),
+      ),
+      $output,
+      $exitCode,
+    );
+    return $exitCode === 0;
+  }
+
+  /**
    * {@inheritdoc}
    *
    * In dry-run mode, prints the command that would run instead of executing it.
@@ -234,15 +265,17 @@ class DeployCommands extends DrushCommands {
    * Builds the artifact directory.
    *
    * Creates a temporary directory, initializes a git repository, adds the
-   * remote origin, checks out the artifact branch, and rsyncs the project
-   * contents into it.
+   * remote origin, and checks out the artifact branch. If the branch
+   * already exists on the remote, its history is fetched and the new build
+   * is committed on top of it; otherwise a fresh branch is created. The
+   * project contents are then rsynced into it.
    *
    * @param string $projectRoot
    *   Absolute path to the project root.
    * @param string $repoUrl
    *   URL of the deployment repository.
    * @param string $artifactBranch
-   *   Branch to create in the artifact repository.
+   *   Branch to create or update in the artifact repository.
    * @param list<string> $excludePaths
    *   Paths to exclude from the artifact, relative to the project root.
    *
@@ -265,10 +298,27 @@ class DeployCommands extends DrushCommands {
       sprintf('git remote add origin %s', escapeshellarg($repoUrl)),
       $artifactDir,
     );
-    $this->runShellCommand(
-      sprintf('git checkout -b %s', escapeshellarg($artifactBranch)),
-      $artifactDir,
-    );
+
+    if ($this->remoteBranchExists($repoUrl, $artifactBranch)) {
+      $this->runShellCommand(
+        sprintf('git fetch origin %s', escapeshellarg($artifactBranch)),
+        $artifactDir,
+      );
+      $this->runShellCommand(
+        sprintf(
+          'git checkout -B %s %s',
+          escapeshellarg($artifactBranch),
+          escapeshellarg('origin/' . $artifactBranch),
+        ),
+        $artifactDir,
+      );
+    }
+    else {
+      $this->runShellCommand(
+        sprintf('git checkout -b %s', escapeshellarg($artifactBranch)),
+        $artifactDir,
+      );
+    }
 
     $excludeArgs = $this->buildExcludeArgs($excludePaths);
     $this->runShellCommand(
