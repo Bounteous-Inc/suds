@@ -30,7 +30,7 @@ Both workflows are driven by `suds.yml` in the project root. One file, committed
 ## Requirements
 
 - PHP 8.3 or later
-- Drush 13
+- Drush 13.3.3 or later
 - Drupal 10.4 or 11
 
 ## Installation

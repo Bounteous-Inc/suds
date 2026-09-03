@@ -6,7 +6,7 @@ Thank you for your interest in contributing to SUDS!
 
 - PHP 8.3+
 - [Composer](https://getcomposer.org/)
-- Drush 13+
+- Drush 13.3.3+
 
 ## Setup
 
@@ -14,7 +14,6 @@ Thank you for your interest in contributing to SUDS!
 git clone git@github.com:Bounteous-Inc/suds.git
 cd suds
 composer install
-composer grumphp:init
 ```
 
 `composer grumphp:init` installs git hooks that run linting, static analysis, and unit tests before each commit.
@@ -27,7 +26,11 @@ Resolution is pinned to `config.platform.php` 8.3, the minimum supported version
 
 [Dependabot](.github/dependabot.yml) opens those update PRs weekly: runtime dependencies individually, dev tooling grouped. Each one carries a lock diff and runs the full CI matrix, so a breaking upstream release lands in its own PR instead of turning an unrelated build red.
 
-Dependabot only ever moves versions up, so nothing currently exercises the *floors* of the `^` constraints in `composer.json`. They are known not to resolve cleanly today — see the tracking issue — so treat a constraint's lower bound as documentation rather than something CI has verified.
+Only `require` constraints are a promise to consumers. `drush/drush` is the one runtime dependency, and a `Dependency floors` CI job pins it to its declared minimum and runs lint, static analysis, and the unit and integration suites against that resolution. It deliberately does not use `composer update --prefer-lowest`, which minimises every transitive package independently and produces combinations no consumer can install — see [ADR 0006](doc/adr/0006-dependency-floor-verification.md).
+
+`require-dev` is our own toolchain; nobody installs it, so its lower bounds carry no promise and are not tested. Those constraints track current and Dependabot keeps them moving, so bump them freely rather than treating them as floors.
+
+The Drupal floor is declared as a `conflict` on `drupal/core` rather than a `require`, because SUDS is installed *into* a project that already has Drupal. That makes "Drupal 10.4 or 11" enforceable at install time, and the separate `Functional (Drupal 10.4)` job described below exercises it for real.
 
 ## Running checks
 
@@ -47,6 +50,16 @@ Functional tests shell out to a live Drupal installation. Provision it first:
 composer sut:si
 composer test:functional
 ```
+
+The suite defaults to the repo's own `sut/` directory and the drush binary in this project's `vendor/`. Both can be redirected to a Drupal site built elsewhere:
+
+```bash
+SUDS_SUT_ROOT=/path/to/drupal/web \
+SUDS_DRUSH_BIN=/path/to/drupal/vendor/bin/drush \
+  composer test:functional
+```
+
+The two must come from the same vendor tree, because drush has to autoload both Drupal and SUDS's command classes. CI uses this to test against a Drupal version that cannot coexist with our dev dependencies.
 
 ## Project standards
 

@@ -5,10 +5,8 @@ declare(strict_types=1);
 namespace Bounteous\Suds\Tests\Functional\Commands;
 
 use Bounteous\Suds\Drush\Commands\ConfigCommands;
-use Bounteous\Suds\Tests\Support\TempDirectoryTrait;
-use Drush\TestTraits\DrushTestTrait;
+use Bounteous\Suds\Tests\Support\FunctionalTestCase;
 use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\TestCase;
 use Symfony\Component\Yaml\Yaml;
 
 /**
@@ -32,10 +30,7 @@ use Symfony\Component\Yaml\Yaml;
  * from the SUT.
  */
 #[CoversClass(ConfigCommands::class)]
-class ConfigCommandsFunctionalTest extends TestCase {
-
-  use DrushTestTrait;
-  use TempDirectoryTrait;
+class ConfigCommandsFunctionalTest extends FunctionalTestCase {
 
   /**
    * Temporary project directory used for resolved-config tests.
@@ -56,13 +51,6 @@ class ConfigCommandsFunctionalTest extends TestCase {
   protected function tearDown(): void {
     parent::tearDown();
     $this->removeDirectory($this->tempProjectRoot);
-  }
-
-  /**
-   * Returns the path to the SUT Drupal root.
-   */
-  protected function getSutRoot(): string {
-    return dirname(__DIR__, 3) . '/sut';
   }
 
   /**

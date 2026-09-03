@@ -179,7 +179,7 @@ deps_update:
     post_deps_update: []
 
 setup:
-  # Drupal recipes to apply after site install, in order (requires Drupal 10.3+).
+  # Drupal recipes to apply after site install, in order (requires Drupal 10.4+).
   # Each entry is a path to a recipe directory, relative to the project root.
   # The profile (drupal.profile) is installed first; recipes layer on top of it.
   # Example:

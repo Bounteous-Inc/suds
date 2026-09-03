@@ -5,10 +5,8 @@ declare(strict_types=1);
 namespace Bounteous\Suds\Tests\Functional\Commands;
 
 use Bounteous\Suds\Drush\Commands\DoctorCommands;
-use Bounteous\Suds\Tests\Support\TempDirectoryTrait;
-use Drush\TestTraits\DrushTestTrait;
+use Bounteous\Suds\Tests\Support\FunctionalTestCase;
 use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\TestCase;
 use Symfony\Component\Yaml\Yaml;
 
 /**
@@ -27,10 +25,7 @@ use Symfony\Component\Yaml\Yaml;
  * relies on the actual system PATH available in the test environment.
  */
 #[CoversClass(DoctorCommands::class)]
-class DoctorCommandsFunctionalTest extends TestCase {
-
-  use DrushTestTrait;
-  use TempDirectoryTrait;
+class DoctorCommandsFunctionalTest extends FunctionalTestCase {
 
   /**
    * Temporary directory used as the fake project root per test.
@@ -53,16 +48,6 @@ class DoctorCommandsFunctionalTest extends TestCase {
   protected function tearDown(): void {
     parent::tearDown();
     $this->removeDirectory($this->tmpDir);
-  }
-
-  /**
-   * Returns the path to the System Under Test Drupal root.
-   *
-   * @return string
-   *   Absolute path to the SUT webroot.
-   */
-  protected function getSutRoot(): string {
-    return dirname(__DIR__, 3) . '/sut';
   }
 
   /**

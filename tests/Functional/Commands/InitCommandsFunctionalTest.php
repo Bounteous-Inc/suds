@@ -5,10 +5,8 @@ declare(strict_types=1);
 namespace Bounteous\Suds\Tests\Functional\Commands;
 
 use Bounteous\Suds\Drush\Commands\InitCommands;
-use Bounteous\Suds\Tests\Support\TempDirectoryTrait;
-use Drush\TestTraits\DrushTestTrait;
+use Bounteous\Suds\Tests\Support\FunctionalTestCase;
 use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\TestCase;
 
 /**
  * Functional tests for InitCommands.
@@ -25,10 +23,7 @@ use PHPUnit\Framework\TestCase;
  * suds.yml is never written to the actual SUT or project root.
  */
 #[CoversClass(InitCommands::class)]
-class InitCommandsFunctionalTest extends TestCase {
-
-  use DrushTestTrait;
-  use TempDirectoryTrait;
+class InitCommandsFunctionalTest extends FunctionalTestCase {
 
   /**
    * Temporary directory used as the fake project root per test.
@@ -51,16 +46,6 @@ class InitCommandsFunctionalTest extends TestCase {
   protected function tearDown(): void {
     parent::tearDown();
     $this->removeDirectory($this->tmpDir);
-  }
-
-  /**
-   * Returns the path to the System Under Test Drupal root.
-   *
-   * @return string
-   *   Absolute path to the SUT webroot.
-   */
-  protected function getSutRoot(): string {
-    return dirname(__DIR__, 3) . '/sut';
   }
 
   /**

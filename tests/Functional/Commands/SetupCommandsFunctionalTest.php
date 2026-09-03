@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace Bounteous\Suds\Tests\Functional\Commands;
 
 use Bounteous\Suds\Drush\Commands\SetupCommands;
-use Drush\TestTraits\DrushTestTrait;
+use Bounteous\Suds\Tests\Support\FunctionalTestCase;
 use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\TestCase;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * Functional tests for SetupCommands.
@@ -25,16 +25,15 @@ use PHPUnit\Framework\TestCase;
  * integration tests (actual drush site:install subprocess, real DB writes).
  */
 #[CoversClass(SetupCommands::class)]
-class SetupCommandsFunctionalTest extends TestCase {
-
-  use DrushTestTrait;
+#[Group('drupal-version-sensitive')]
+class SetupCommandsFunctionalTest extends FunctionalTestCase {
 
   /**
-   * Absolute path to the SUT SQLite database file.
+   * The SUT database file backed up in setUp(), or NULL if none was taken.
    *
-   * @var string
+   * @var string|null
    */
-  private string $sutDbPath;
+  private ?string $backedUpDb = NULL;
 
   /**
    * {@inheritdoc}
@@ -43,11 +42,17 @@ class SetupCommandsFunctionalTest extends TestCase {
    * drush site:install which wipes the database and leaves the config sync
    * directory empty, which would cause subsequent tests (e.g. UpdateCommands)
    * to fail when they call suds:update → config:import.
+   *
+   * On a non-SQLite SUT there is no single file to snapshot, so the backup is
+   * skipped and the test simply leaves the site reinstalled.
    */
   protected function setUp(): void {
     parent::setUp();
-    $this->sutDbPath = $this->getSutRoot() . '/sites/default/files/.ht.sqlite';
-    copy($this->sutDbPath, $this->sutDbPath . '.bak');
+    $dbPath = $this->sqliteDbPath();
+    if ($dbPath !== NULL && is_file($dbPath)) {
+      copy($dbPath, $dbPath . '.bak');
+      $this->backedUpDb = $dbPath;
+    }
   }
 
   /**
@@ -58,20 +63,11 @@ class SetupCommandsFunctionalTest extends TestCase {
    */
   protected function tearDown(): void {
     parent::tearDown();
-    if (file_exists($this->sutDbPath . '.bak')) {
-      copy($this->sutDbPath . '.bak', $this->sutDbPath);
-      unlink($this->sutDbPath . '.bak');
+    if ($this->backedUpDb !== NULL) {
+      copy($this->backedUpDb . '.bak', $this->backedUpDb);
+      unlink($this->backedUpDb . '.bak');
+      $this->backedUpDb = NULL;
     }
-  }
-
-  /**
-   * Returns the path to the System Under Test Drupal root.
-   *
-   * @return string
-   *   Absolute path to the SUT webroot.
-   */
-  protected function getSutRoot(): string {
-    return dirname(__DIR__, 3) . '/sut';
   }
 
   /**
