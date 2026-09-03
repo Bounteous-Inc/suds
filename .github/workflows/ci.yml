@@ -58,15 +58,20 @@ jobs:
       - name: Functional tests
         run: composer test:functional
 
-  # Verifies that the *declared* lower bounds of our own direct constraints
-  # actually work, which the lockfile-based job above never exercises.
+  # Verifies the floor of our one runtime dependency, which the lockfile-based
+  # job above never exercises. Only `require` constraints are a promise to
+  # consumers; require-dev is our own toolchain and tracks current, so its
+  # lower bounds are not meaningful and are not tested here.
   #
   # Deliberately NOT `composer update --prefer-lowest`: that minimises every
   # transitive package independently and produces combinations no consumer can
   # install (e.g. it selects grasmash/yaml-cli 3.2.0, which is incompatible
-  # with the symfony/console that Drupal 11 requires). Pinning our own floors
-  # and letting Composer resolve the rest is what actually tests the support
-  # claim in README.md. See doc/adr/0006-dependency-floor-verification.md.
+  # with the symfony/console that Drupal 11 requires). Pinning our declared
+  # floor and letting Composer resolve the rest is what actually tests the
+  # support claim. See doc/adr/0006-dependency-floor-verification.md.
+  #
+  # The Drupal floor is enforced by the `conflict` on drupal/core rather than
+  # tested here, and exercised for real by functional-drupal10 below.
   floors:
     name: Dependency floors (PHP 8.3)
     runs-on: ubuntu-latest
@@ -93,10 +98,9 @@ jobs:
           key: ${{ runner.os }}-composer-floors-${{ hashFiles('composer.json') }}
           restore-keys: ${{ runner.os }}-composer-floors-
 
-      - name: Pin declared floors
+      - name: Pin declared runtime floor
         run: |
-          composer require --no-update --no-interaction \
-            drush/drush:13.3.3 drupal/coder:8.3.28
+          composer require --no-update --no-interaction drush/drush:13.3.3
           composer update --no-interaction --no-progress
 
       # Run the checks individually rather than via `composer check`: grumphp's

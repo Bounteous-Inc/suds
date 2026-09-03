@@ -18,7 +18,7 @@ The obvious fix — a `composer update --prefer-lowest --prefer-stable` job — 
 
 None of these are defects in SUDS, and fixing them would mean adding constraints on packages SUDS does not depend on — `sebastian/diff`, `grasmash/yaml-cli`, `amphp/parallel` — pinning transitive dependencies we have no relationship with in order to satisfy a resolution strategy no user employs.
 
-What we actually want to know is narrower: *do the floors we publish work?* That is answered by pinning our own direct constraints to their declared minimum and letting Composer resolve the remainder normally.
+What we actually want to know is narrower: *do the floors we publish work?* Only `require` constraints are published — `require-dev` is our own toolchain, which no consumer installs — so the question is answered by pinning the runtime constraint to its declared minimum and letting Composer resolve the remainder normally.
 
 Two real defects surfaced this way and are worth recording, because both were invisible to the lockfile:
 
@@ -26,33 +26,49 @@ Two real defects surfaced this way and are worth recording, because both were in
 
 2. **`drupal/core-composer-scaffold` was used but never declared.** `composer.json` configures it and allows it as a plugin, but only received it transitively from `drupal/core` ≥ 11.4.5 (via `self.version`). At any lower resolution it vanished, `sut/` was never scaffolded, and `composer sut:si` failed with a misleading `assert($this->bootstrap instanceof DrupalBoot8)`.
 
-The Drupal floor is a separate problem. Because Drupal 10.4 and PHPUnit 11 cannot share a vendor tree, the `^10.4` half of the `drupal/core-recommended` dev constraint was unreachable and untested. Decoupling `sut/` into its own Composer project was considered and rejected: the drush binary must autoload both Drupal *and* SUDS from a single autoloader, so a split forces SUDS to be path-installed into the SUT, which re-merges the trees. The coupling moves rather than disappears, while `composer analyze` breaks on a fresh clone (`mglaman/phpstan-drupal` throws without a discoverable Drupal root) and `symlink: true|false` becomes load-bearing.
+The Drupal floor is a separate problem, and was not declared at all — `composer.json` had no `conflict` block, so nothing prevented installing SUDS on a Drupal version it does not support. Because Drupal 10.4 and PHPUnit 11 cannot share a vendor tree, the `^10.4` half of the `drupal/core-recommended` dev constraint was also unreachable and untested. Decoupling `sut/` into its own Composer project was considered and rejected: the drush binary must autoload both Drupal *and* SUDS from a single autoloader, so a split forces SUDS to be path-installed into the SUT, which re-merges the trees. The coupling moves rather than disappears, while `composer analyze` breaks on a fresh clone (`mglaman/phpstan-drupal` throws without a discoverable Drupal root) and `symlink: true|false` becomes load-bearing.
 
 SUDS has no Drupal PHP-API coupling at all — there is not one `use Drupal\...` in `src/`; it interacts with Drupal only by shelling out to drush. So the Drupal version can only affect us through the drush command surface, and the same drush 13.x runs against both majors, absorbing most of that. The realistic risk is confined to the handful of tests that exercise real site operations.
 
 ## Decision
 
-Verify floors by pinning our own direct constraints, not by minimising the whole graph. The `Dependency floors` CI job runs:
+Distinguish constraints that are a promise to consumers from constraints that are only our own toolchain, and verify only the former.
+
+**`require` is a promise.** `drush/drush: ^13.3.3` is the one runtime dependency, and its floor is verified by the `Dependency floors` CI job:
 
 ```
-composer require --no-update drush/drush:13.3.3 drupal/coder:8.3.28
+composer require --no-update drush/drush:13.3.3
 composer update
 ```
 
-then lint, static analysis, and the unit and integration suites. It runs the checks individually rather than via `composer check`, because grumphp's `composer` task fails on the deliberately-mutated `composer.json`.
+then lint, static analysis, and the unit and integration suites. The checks run individually rather than via `composer check`, because grumphp's `composer` task fails on the deliberately-mutated `composer.json`.
 
-Floors corrected to versions that actually work: `drush/drush: ^13.3.3`, `drupal/coder: ^8.3.28`, and `drupal/core-composer-scaffold` declared explicitly.
+**`require-dev` is not a promise.** Nobody installs SUDS's toolchain, so its lower bounds mean nothing and testing them tests nothing. Those constraints are bumped to current instead, and Dependabot keeps them moving. This also removes two constraints that were quietly unsatisfiable — `squizlabs/php_codesniffer: ^3.9` (drupal/coder requires `^3.11.2`) and `phpstan/phpstan: ^2.0` (mglaman/phpstan-drupal requires `^2.1`) — floors no resolution could ever have selected.
+
+**Drupal is a promise that lives in `require-dev`.** `drupal/core-recommended` is there only to provide the test SUT, so requiring it would be wrong: SUDS is installed *into* a project that already has Drupal, and `require` would force an installation rather than state a compatibility range. Drush has the same problem and solves it with a `conflict`, which we mirror:
+
+```json
+"conflict": { "drupal/core": "<10.4" }
+```
+
+This fails the install for a consumer on Drupal 10.3 without demanding that Drupal be installed. Relying on Drush's own `conflict` transitively does not work: a project on Drupal 10.3 requiring `drush/drush: ^13.3.3` resolves happily, because Composer simply selects an older Drush in that range whose conflict permits 10.3.
+
+Only the floor is declared, not an upper bound. Drupal 12 compatibility is unknown, but blocking it pre-emptively would stop consumers even trying and would need a release to undo.
+
+`drupal/core-composer-scaffold` is also now declared explicitly.
 
 Drupal 10.4 coverage is bought with a CI job rather than a repo restructure. `Functional (Drupal 10.4)` builds a Drupal 10.4 site outside the repo with SUDS installed into it as a `path` repository (`symlink: false`), then points the existing functional suite at that site via two environment variables read by `tests/Support/FunctionalTestCase.php`:
 
 - `SUDS_SUT_ROOT` — the Drupal root.
 - `SUDS_DRUSH_BIN` — the drush binary, which must come from the same vendor tree as that root.
 
-The dev constraint on `drupal/core-recommended` is narrowed to `^11.0`, describing what the local tree can hold rather than what SUDS supports. The supported range stays "Drupal 10.4 or 11" and is now verified by that job.
+The dev constraint on `drupal/core-recommended` tracks current like the rest of the toolchain, describing what the local tree happens to test against rather than what SUDS supports. The supported range stays "Drupal 10.4 or 11", now both enforced by the `conflict` and exercised by that job.
 
 ## Consequences
 
-The floors we publish are checked on every PR, and a stale lower bound fails in CI instead of surfacing in a consumer's install. The two defects above are fixed, and `drush/drush: ^13.3.3` is now an honest floor: below it SUDS does not function at all.
+The floors we publish are checked on every PR, and a stale lower bound fails in CI instead of surfacing in a consumer's install. The two defects above are fixed, and `drush/drush: ^13.3.3` is now an honest floor: below it SUDS does not function at all. The Drupal floor is enforced at install time for the first time, so "Drupal 10.4 or 11" is a guarantee rather than a README claim.
+
+The cost of tracking current in `require-dev` is that contributors must keep their toolchain reasonably fresh. That is already true in practice — the lockfile governs local installs — and it buys constraints that describe reality instead of fiction.
 
 `--prefer-lowest` remains unusable, so the floors job does not prove that *every* transitive dependency works at its minimum — only that our own declared minimums do. That is the property we publish, and the narrower claim is the accurate one.
 

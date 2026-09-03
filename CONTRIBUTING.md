@@ -26,9 +26,11 @@ Resolution is pinned to `config.platform.php` 8.3, the minimum supported version
 
 [Dependabot](.github/dependabot.yml) opens those update PRs weekly: runtime dependencies individually, dev tooling grouped. Each one carries a lock diff and runs the full CI matrix, so a breaking upstream release lands in its own PR instead of turning an unrelated build red.
 
-Dependabot only ever moves versions up, so a separate `Dependency floors` CI job pins the *declared* lower bounds of our own direct constraints (`drush/drush`, `drupal/coder`) and runs lint, static analysis, and the unit and integration suites against that resolution. It deliberately does not use `composer update --prefer-lowest`, which minimises every transitive package independently and produces combinations no consumer can install — see [ADR 0006](doc/adr/0006-dependency-floor-verification.md).
+Only `require` constraints are a promise to consumers. `drush/drush` is the one runtime dependency, and a `Dependency floors` CI job pins it to its declared minimum and runs lint, static analysis, and the unit and integration suites against that resolution. It deliberately does not use `composer update --prefer-lowest`, which minimises every transitive package independently and produces combinations no consumer can install — see [ADR 0006](doc/adr/0006-dependency-floor-verification.md).
 
-Not covered by that job: the Drupal floor. Drupal 10.4 cannot share a vendor tree with `phpunit/phpunit ^11`, so it is exercised by the separate `Functional (Drupal 10.4)` job described below.
+`require-dev` is our own toolchain; nobody installs it, so its lower bounds carry no promise and are not tested. Those constraints track current and Dependabot keeps them moving, so bump them freely rather than treating them as floors.
+
+The Drupal floor is declared as a `conflict` on `drupal/core` rather than a `require`, because SUDS is installed *into* a project that already has Drupal. That makes "Drupal 10.4 or 11" enforceable at install time, and the separate `Functional (Drupal 10.4)` job described below exercises it for real.
 
 ## Running checks
 
