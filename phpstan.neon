@@ -7,6 +7,11 @@ parameters:
         - tests
     excludePaths:
         - vendor
+    # Drush\Style\DrushStyle (the DrushCommands::io() return type) lives in
+    # Drush's Symfony-compatibility tree before 13.7.1 and is only registered
+    # by Drush's runtime preflight, which PHPStan never runs. See the file.
+    bootstrapFiles:
+        - tests/drush-compat-autoloader.php
     ignoreErrors:
         # These tests parse arbitrary Drush CLI output to assert it's valid YAML —
         # they aren't part of Drupal's config-storage layer, so the rule's rationale
