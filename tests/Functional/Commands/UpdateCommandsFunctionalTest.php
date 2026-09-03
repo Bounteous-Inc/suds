@@ -5,9 +5,8 @@ declare(strict_types=1);
 namespace Bounteous\Suds\Tests\Functional\Commands;
 
 use Bounteous\Suds\Drush\Commands\UpdateCommands;
-use Drush\TestTraits\DrushTestTrait;
+use Bounteous\Suds\Tests\Support\FunctionalTestCase;
 use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\TestCase;
 
 /**
  * Functional tests for UpdateCommands.
@@ -25,9 +24,7 @@ use PHPUnit\Framework\TestCase;
  * site in a consistent state after each run.
  */
 #[CoversClass(UpdateCommands::class)]
-class UpdateCommandsFunctionalTest extends TestCase {
-
-  use DrushTestTrait;
+class UpdateCommandsFunctionalTest extends FunctionalTestCase {
 
   /**
    * Absolute path to the config sync directory, once resolved.
@@ -42,16 +39,6 @@ class UpdateCommandsFunctionalTest extends TestCase {
    * @var list<string>
    */
   private array $syncFilesBefore = [];
-
-  /**
-   * Returns the path to the System Under Test Drupal root.
-   *
-   * @return string
-   *   Absolute path to the SUT webroot.
-   */
-  protected function getSutRoot(): string {
-    return dirname(__DIR__, 3) . '/sut';
-  }
 
   /**
    * Tests that suds:update exits cleanly against the live SUT.

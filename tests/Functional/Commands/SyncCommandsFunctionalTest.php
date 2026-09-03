@@ -5,10 +5,8 @@ declare(strict_types=1);
 namespace Bounteous\Suds\Tests\Functional\Commands;
 
 use Bounteous\Suds\Drush\Commands\SyncCommands;
-use Bounteous\Suds\Tests\Support\TempDirectoryTrait;
-use Drush\TestTraits\DrushTestTrait;
+use Bounteous\Suds\Tests\Support\FunctionalTestCase;
 use PHPUnit\Framework\Attributes\CoversClass;
-use PHPUnit\Framework\TestCase;
 use Symfony\Component\Yaml\Yaml;
 
 /**
@@ -29,10 +27,7 @@ use Symfony\Component\Yaml\Yaml;
  * dispatch logic is covered by SyncCommandsIntegrationTest.
  */
 #[CoversClass(SyncCommands::class)]
-class SyncCommandsFunctionalTest extends TestCase {
-
-  use DrushTestTrait;
-  use TempDirectoryTrait;
+class SyncCommandsFunctionalTest extends FunctionalTestCase {
 
   /**
    * Temporary directory used as the fake project root per test.
@@ -56,16 +51,6 @@ class SyncCommandsFunctionalTest extends TestCase {
   protected function tearDown(): void {
     parent::tearDown();
     $this->removeDirectory($this->tmpDir);
-  }
-
-  /**
-   * Returns the path to the System Under Test Drupal root.
-   *
-   * @return string
-   *   Absolute path to the SUT webroot.
-   */
-  protected function getSutRoot(): string {
-    return dirname(__DIR__, 3) . '/sut';
   }
 
   /**

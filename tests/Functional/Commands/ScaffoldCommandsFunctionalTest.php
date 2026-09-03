@@ -5,11 +5,9 @@ declare(strict_types=1);
 namespace Bounteous\Suds\Tests\Functional\Commands;
 
 use Bounteous\Suds\Drush\Commands\ScaffoldCommands;
-use Bounteous\Suds\Tests\Support\TempDirectoryTrait;
-use Drush\TestTraits\DrushTestTrait;
+use Bounteous\Suds\Tests\Support\FunctionalTestCase;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
-use PHPUnit\Framework\TestCase;
 
 /**
  * Functional tests for ScaffoldCommands.
@@ -26,10 +24,7 @@ use PHPUnit\Framework\TestCase;
  * scaffolded files are never written to the actual SUT or project root.
  */
 #[CoversClass(ScaffoldCommands::class)]
-class ScaffoldCommandsFunctionalTest extends TestCase {
-
-  use DrushTestTrait;
-  use TempDirectoryTrait;
+class ScaffoldCommandsFunctionalTest extends FunctionalTestCase {
 
   /**
    * Temporary directory used as the fake project root per test.
@@ -52,16 +47,6 @@ class ScaffoldCommandsFunctionalTest extends TestCase {
   protected function tearDown(): void {
     parent::tearDown();
     $this->removeDirectory($this->tmpDir);
-  }
-
-  /**
-   * Returns the path to the System Under Test Drupal root.
-   *
-   * @return string
-   *   Absolute path to the SUT webroot.
-   */
-  protected function getSutRoot(): string {
-    return dirname(__DIR__, 3) . '/sut';
   }
 
   /**
