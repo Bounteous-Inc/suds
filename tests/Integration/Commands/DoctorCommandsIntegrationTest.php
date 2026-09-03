@@ -327,7 +327,7 @@ class DoctorCommandsIntegrationTest extends IntegrationTestCase {
       repo:
         url: 'git@example.com:example.git'
     YAML;
-    file_put_contents($this->projectRoot . '/suds.yml', $yaml . "\n");
+    file_put_contents($this->projectRoot . '/suds.yml', $yaml);
 
     $this->commandInstance->setConfigLoader(
       new ConfigLoader($this->projectRoot, $this->packageRoot()),

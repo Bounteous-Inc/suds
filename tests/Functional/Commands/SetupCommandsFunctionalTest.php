@@ -7,6 +7,7 @@ namespace Bounteous\Suds\Tests\Functional\Commands;
 use Bounteous\Suds\Drush\Commands\SetupCommands;
 use Bounteous\Suds\Tests\Support\FunctionalTestCase;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * Functional tests for SetupCommands.
@@ -24,14 +25,15 @@ use PHPUnit\Framework\Attributes\CoversClass;
  * integration tests (actual drush site:install subprocess, real DB writes).
  */
 #[CoversClass(SetupCommands::class)]
+#[Group('drupal-version-sensitive')]
 class SetupCommandsFunctionalTest extends FunctionalTestCase {
 
   /**
-   * Absolute path to the SUT SQLite database file, or NULL if not SQLite.
+   * The SUT database file backed up in setUp(), or NULL if none was taken.
    *
    * @var string|null
    */
-  private ?string $sutDbPath = NULL;
+  private ?string $backedUpDb = NULL;
 
   /**
    * {@inheritdoc}
@@ -46,9 +48,10 @@ class SetupCommandsFunctionalTest extends FunctionalTestCase {
    */
   protected function setUp(): void {
     parent::setUp();
-    $this->sutDbPath = $this->sqliteDbPath();
-    if ($this->sutDbPath !== NULL && is_file($this->sutDbPath)) {
-      copy($this->sutDbPath, $this->sutDbPath . '.bak');
+    $dbPath = $this->sqliteDbPath();
+    if ($dbPath !== NULL && is_file($dbPath)) {
+      copy($dbPath, $dbPath . '.bak');
+      $this->backedUpDb = $dbPath;
     }
   }
 
@@ -60,9 +63,10 @@ class SetupCommandsFunctionalTest extends FunctionalTestCase {
    */
   protected function tearDown(): void {
     parent::tearDown();
-    if ($this->sutDbPath !== NULL && file_exists($this->sutDbPath . '.bak')) {
-      copy($this->sutDbPath . '.bak', $this->sutDbPath);
-      unlink($this->sutDbPath . '.bak');
+    if ($this->backedUpDb !== NULL) {
+      copy($this->backedUpDb . '.bak', $this->backedUpDb);
+      unlink($this->backedUpDb . '.bak');
+      $this->backedUpDb = NULL;
     }
   }
 

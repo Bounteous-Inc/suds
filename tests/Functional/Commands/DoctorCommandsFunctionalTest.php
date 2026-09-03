@@ -27,7 +27,6 @@ use Symfony\Component\Yaml\Yaml;
 #[CoversClass(DoctorCommands::class)]
 class DoctorCommandsFunctionalTest extends FunctionalTestCase {
 
-
   /**
    * Temporary directory used as the fake project root per test.
    *

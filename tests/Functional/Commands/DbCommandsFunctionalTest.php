@@ -7,6 +7,7 @@ namespace Bounteous\Suds\Tests\Functional\Commands;
 use Bounteous\Suds\Drush\Commands\DbCommands;
 use Bounteous\Suds\Tests\Support\FunctionalTestCase;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\Group;
 use Symfony\Component\Yaml\Yaml;
 
 /**
@@ -25,6 +26,7 @@ use Symfony\Component\Yaml\Yaml;
  * (the integration tests verify its dispatch logic without a real alias).
  */
 #[CoversClass(DbCommands::class)]
+#[Group('drupal-version-sensitive')]
 class DbCommandsFunctionalTest extends FunctionalTestCase {
 
   /**

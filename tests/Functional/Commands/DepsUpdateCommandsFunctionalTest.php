@@ -7,6 +7,7 @@ namespace Bounteous\Suds\Tests\Functional\Commands;
 use Bounteous\Suds\Drush\Commands\DepsUpdateCommands;
 use Bounteous\Suds\Tests\Support\FunctionalTestCase;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\Group;
 use Symfony\Component\Yaml\Yaml;
 
 /**
@@ -35,6 +36,7 @@ use Symfony\Component\Yaml\Yaml;
  * command sequence without touching the SUT.
  */
 #[CoversClass(DepsUpdateCommands::class)]
+#[Group('drupal-version-sensitive')]
 class DepsUpdateCommandsFunctionalTest extends FunctionalTestCase {
 
   /**

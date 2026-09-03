@@ -20,9 +20,12 @@ use PHPUnit\Framework\TestCase;
  * project's dev dependencies):
  *
  * - SUDS_SUT_ROOT:  absolute path to the Drupal root.
- * - SUDS_DRUSH_BIN: absolute path to the drush binary to invoke. This must come
- *   from the same vendor tree as that Drupal root, because drush has to
- *   autoload both Drupal and SUDS's command classes.
+ * - SUDS_DRUSH_BIN: absolute path to the drush binary to invoke.
+ *
+ * They must be set together, and must come from the same vendor tree: drush
+ * has to autoload both Drupal and SUDS's command classes. Setting only one is
+ * rejected in setUpBeforeClass() rather than left to fail later as a confusing
+ * "command not found".
  *
  * IMPORTANT: `use DrushTestTrait` and the getPathToDrush() override must stay
  * together in this class. DrushTestTrait::drush() calls
@@ -40,31 +43,28 @@ abstract class FunctionalTestCase extends TestCase {
    * Returns the drush binary the tests should invoke.
    *
    * Overrides DrushTestTrait::getPathToDrush(), which would otherwise resolve
-   * to the binary inside the drush package in this project's vendor/.
+   * to the binary inside the drush package in this project's vendor/. Must
+   * stay non-static to match the trait's signature.
    *
    * @return string
    *   Absolute path to a drush executable.
    */
   public function getPathToDrush(): string {
-    $configured = getenv('SUDS_DRUSH_BIN');
-    if (is_string($configured) && $configured !== '') {
-      return $configured;
-    }
-    return dirname(__DIR__, 2) . '/vendor/drush/drush/drush';
+    return getenv('SUDS_DRUSH_BIN')
+      ?: dirname(__DIR__, 2) . '/vendor/drush/drush/drush';
   }
 
   /**
    * Returns the Drupal root of the system under test.
    *
+   * Static so setUpBeforeClass() can share one definition of the default
+   * path rather than re-deriving it; subclasses still call $this->getSutRoot().
+   *
    * @return string
    *   Absolute path to the Drupal root.
    */
-  protected function getSutRoot(): string {
-    $configured = getenv('SUDS_SUT_ROOT');
-    if (is_string($configured) && $configured !== '') {
-      return $configured;
-    }
-    return dirname(__DIR__, 2) . '/sut';
+  protected static function getSutRoot(): string {
+    return getenv('SUDS_SUT_ROOT') ?: dirname(__DIR__, 2) . '/sut';
   }
 
   /**
@@ -79,37 +79,48 @@ abstract class FunctionalTestCase extends TestCase {
    *   Absolute path to the SQLite file, or NULL when not applicable.
    */
   protected function sqliteDbPath(): ?string {
-    $dbUrl = getenv('UNISH_DB_URL');
-    if (!is_string($dbUrl) || $dbUrl === '') {
-      // Matches the default in the sut:si composer script.
-      $dbUrl = 'sqlite://sites/default/files/.ht.sqlite';
-    }
+    // phpunit.xml.dist sets this; the default mirrors the sut:si script.
+    $dbUrl = getenv('UNISH_DB_URL') ?: 'sqlite://sites/default/files/.ht.sqlite';
     if (!str_starts_with($dbUrl, 'sqlite://')) {
       return NULL;
     }
     $relative = substr($dbUrl, strlen('sqlite://'));
-    return $this->getSutRoot() . '/' . ltrim($relative, '/');
+    return static::getSutRoot() . '/' . ltrim($relative, '/');
   }
 
   /**
-   * Skips the whole class when the SUT has not been provisioned.
+   * Validates the SUT configuration before any test in the class runs.
    *
-   * Without this a fresh clone produces a wall of confusing subprocess
-   * failures instead of a clear signal to run `composer sut:si`.
+   * Skips locally so a fresh clone gets one actionable message instead of a
+   * wall of subprocess failures, but fails under CI: PHPUnit exits 0 on a
+   * fully-skipped suite, which would let a broken SUT report green having
+   * tested nothing.
    */
   public static function setUpBeforeClass(): void {
     parent::setUpBeforeClass();
 
-    $sutRoot = getenv('SUDS_SUT_ROOT');
-    if (!is_string($sutRoot) || $sutRoot === '') {
-      $sutRoot = dirname(__DIR__, 2) . '/sut';
+    $root = getenv('SUDS_SUT_ROOT');
+    $bin = getenv('SUDS_DRUSH_BIN');
+    if (($root === FALSE) !== ($bin === FALSE)) {
+      self::fail(
+        'SUDS_SUT_ROOT and SUDS_DRUSH_BIN must be set together: the drush '
+        . 'binary has to come from the same vendor tree as the Drupal root, '
+        . 'so it can autoload both Drupal and SUDS.'
+      );
     }
-    if (!is_file($sutRoot . '/sites/default/settings.php')) {
-      self::markTestSkipped(sprintf(
-        'SUT is not provisioned at %s. Run `composer sut:si` first.',
-        $sutRoot,
-      ));
+
+    if (is_file(static::getSutRoot() . '/sites/default/settings.php')) {
+      return;
     }
+
+    $message = sprintf(
+      'SUT is not provisioned at %s. Run `composer sut:si` first.',
+      static::getSutRoot(),
+    );
+    if (getenv('CI')) {
+      self::fail($message);
+    }
+    self::markTestSkipped($message);
   }
 
 }

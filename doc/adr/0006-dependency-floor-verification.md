@@ -37,11 +37,14 @@ Distinguish constraints that are a promise to consumers from constraints that ar
 **`require` is a promise.** `drush/drush: ^13.3.3` is the one runtime dependency, and its floor is verified by the `Dependency floors` CI job:
 
 ```
-composer require --no-update drush/drush:13.3.3
+floor=$(jq -r '.require["drush/drush"] | ltrimstr("^")' composer.json)
+composer require --no-update "drush/drush:$floor"
 composer update
 ```
 
-then lint, static analysis, and the unit and integration suites. The checks run individually rather than via `composer check`, because grumphp's `composer` task fails on the deliberately-mutated `composer.json`.
+then lint, static analysis, and the unit and integration suites. The floor is
+read out of `composer.json` rather than repeated in the workflow, so bumping the
+constraint cannot leave the job silently verifying the old one. The checks run individually rather than via `composer check`, because grumphp's `composer` task fails on the deliberately-mutated `composer.json`.
 
 **`require-dev` is not a promise.** Nobody installs SUDS's toolchain, so its lower bounds mean nothing and testing them tests nothing. Those constraints are bumped to current instead, and Dependabot keeps them moving. This also removes two constraints that were quietly unsatisfiable — `squizlabs/php_codesniffer: ^3.9` (drupal/coder requires `^3.11.2`) and `phpstan/phpstan: ^2.0` (mglaman/phpstan-drupal requires `^2.1`) — floors no resolution could ever have selected.
 
@@ -60,7 +63,7 @@ Only the floor is declared, not an upper bound. Drupal 12 compatibility is unkno
 Drupal 10.4 coverage is bought with a CI job rather than a repo restructure. `Functional (Drupal 10.4)` builds a Drupal 10.4 site outside the repo with SUDS installed into it as a `path` repository (`symlink: false`), then points the existing functional suite at that site via two environment variables read by `tests/Support/FunctionalTestCase.php`:
 
 - `SUDS_SUT_ROOT` — the Drupal root.
-- `SUDS_DRUSH_BIN` — the drush binary, which must come from the same vendor tree as that root.
+- `SUDS_DRUSH_BIN` — the drush binary, which must come from the same vendor tree as that root, since it has to autoload both Drupal and SUDS. Setting only one of the two is rejected up front rather than surfacing later as a confusing "command not found".
 
 The dev constraint on `drupal/core-recommended` tracks current like the rest of the toolchain, describing what the local tree happens to test against rather than what SUDS supports. The supported range stays "Drupal 10.4 or 11", now both enforced by the `conflict` and exercised by that job.
 
@@ -74,7 +77,7 @@ The cost of tracking current in `require-dev` is that contributors must keep the
 
 The Drupal 10.4 job resolves its site fresh on each run rather than from a lockfile. This is deliberate — it is how an upstream Drupal patch release that breaks SUDS gets caught — but it means the job can go red without a change on our side. It is therefore kept out of the required status checks.
 
-Because that job runs a subset of the functional suite (the classes that perform real site operations), Drupal 10.4 coverage is narrower than Drupal 11's. The remaining tests only need *a* bootstrappable Drupal for `suds:*` to register, which Drupal 11 already demonstrates.
+Because that job runs a subset of the functional suite — the classes marked `#[Group('drupal-version-sensitive')]`, which perform real site operations — Drupal 10.4 coverage is narrower than Drupal 11's. The group lives on the test classes rather than as a filter in CI so the set cannot silently drift as tests are added, and the job runs with `--fail-on-empty-test-suite` so a group that matches nothing fails rather than reporting green. The remaining tests only need *a* bootstrappable Drupal for `suds:*` to register, which Drupal 11 already demonstrates.
 
 One notable gap is unaddressed: recipes. `SetupCommands` shells out to `php <drupal-root>/core/scripts/drupal recipe`, the one genuinely Drupal-version-sensitive surface in SUDS, and it has no functional coverage on any version. Adding the 10.4 job does not change that; closing it needs a new test.
 

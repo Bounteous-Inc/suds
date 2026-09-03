@@ -7,6 +7,7 @@ namespace Bounteous\Suds\Tests\Functional\Commands;
 use Bounteous\Suds\Drush\Commands\UpdateCommands;
 use Bounteous\Suds\Tests\Support\FunctionalTestCase;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\Group;
 
 /**
  * Functional tests for UpdateCommands.
@@ -24,6 +25,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
  * site in a consistent state after each run.
  */
 #[CoversClass(UpdateCommands::class)]
+#[Group('drupal-version-sensitive')]
 class UpdateCommandsFunctionalTest extends FunctionalTestCase {
 
   /**

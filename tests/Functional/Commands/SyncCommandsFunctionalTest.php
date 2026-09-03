@@ -7,6 +7,7 @@ namespace Bounteous\Suds\Tests\Functional\Commands;
 use Bounteous\Suds\Drush\Commands\SyncCommands;
 use Bounteous\Suds\Tests\Support\FunctionalTestCase;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\Group;
 use Symfony\Component\Yaml\Yaml;
 
 /**
@@ -27,6 +28,7 @@ use Symfony\Component\Yaml\Yaml;
  * dispatch logic is covered by SyncCommandsIntegrationTest.
  */
 #[CoversClass(SyncCommands::class)]
+#[Group('drupal-version-sensitive')]
 class SyncCommandsFunctionalTest extends FunctionalTestCase {
 
   /**
