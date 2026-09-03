@@ -129,9 +129,6 @@ jobs:
   functional-drupal10:
     name: Functional (Drupal 10.4, PHP 8.3)
     runs-on: ubuntu-latest
-    env:
-      SUDS_SUT_ROOT: ${{ runner.temp }}/sut10/web
-      SUDS_DRUSH_BIN: ${{ runner.temp }}/sut10/vendor/bin/drush
 
     steps:
       - name: Checkout
@@ -188,6 +185,9 @@ jobs:
       # both bootstrap Drupal 10.4 and see SUDS's commands, so a green run
       # below can't be a false pass against the repo's own drush.
       - name: Verify SUT wiring
+        env:
+          SUDS_SUT_ROOT: ${{ runner.temp }}/sut10/web
+          SUDS_DRUSH_BIN: ${{ runner.temp }}/sut10/vendor/bin/drush
         run: |
           version=$("$SUDS_DRUSH_BIN" --root="$SUDS_SUT_ROOT" status --field=drupal-version)
           echo "SUT Drupal version: $version"
@@ -203,6 +203,9 @@ jobs:
       # *a* bootstrappable Drupal and are covered on 11 by the `test` job.
       # --fail-on-empty-test-suite so a group that matches nothing is not green.
       - name: Functional tests (Drupal-dependent subset)
+        env:
+          SUDS_SUT_ROOT: ${{ runner.temp }}/sut10/web
+          SUDS_DRUSH_BIN: ${{ runner.temp }}/sut10/vendor/bin/drush
         run: |
           vendor/bin/phpunit --testsuite functional \
             --group drupal-version-sensitive --fail-on-empty-test-suite
