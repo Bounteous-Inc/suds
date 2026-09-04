@@ -12,6 +12,7 @@ use Drush\Commands\DrushCommands;
  */
 class ScaffoldCommands extends DrushCommands {
 
+  use ComposerManifestTrait;
   use ConfigLoaderAwareTrait;
   use WorkingDirectoryTrait;
 
@@ -246,18 +247,8 @@ class ScaffoldCommands extends DrushCommands {
    *   A version string suitable for use in a CI pipeline (e.g. '8.3').
    */
   private function detectPhpVersion(string $targetDir): string {
-    $composerJson = $targetDir . '/composer.json';
-    if (!file_exists($composerJson)) {
-      return '8.3';
-    }
-
-    $raw = file_get_contents($composerJson);
-    if ($raw === FALSE) {
-      return '8.3';
-    }
-
-    $data = json_decode($raw, TRUE);
-    if (!is_array($data)) {
+    $data = $this->readComposerManifest($targetDir);
+    if ($data === NULL) {
       return '8.3';
     }
 
