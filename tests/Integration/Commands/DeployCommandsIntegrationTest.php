@@ -193,6 +193,15 @@ class TestableDeployCommands extends DeployCommands {
   /**
    * {@inheritdoc}
    *
+   * No-op in integration tests — git commands are not executed.
+   */
+  protected function runGitCommand(array $args, string $cwd): void {
+    // Intentionally empty: integration tests do not spawn real subprocesses.
+  }
+
+  /**
+   * {@inheritdoc}
+   *
    * No-op in integration tests — no real artifact directory exists to write to.
    */
   protected function writeManifestFile(string $filePath, string $content): void {

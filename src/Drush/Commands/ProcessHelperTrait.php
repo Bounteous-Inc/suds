@@ -154,15 +154,28 @@ trait ProcessHelperTrait {
   protected function runShellCommand(string $cmd, string $cwd): void {
     $process = Process::fromShellCommandline($cmd, $cwd);
     $process->setTimeout(NULL);
-    $io = $this->io();
-    $process->mustRun(static function (string $type, string $buffer) use ($io): void {
-      if ($type === Process::ERR) {
-        $io->getErrorStyle()->write($buffer);
-      }
-      else {
-        $io->write($buffer);
-      }
-    });
+    $process->mustRun($this->forwardProcessOutput(...));
+  }
+
+  /**
+   * Forwards a chunk of process output to the appropriate IO stream.
+   *
+   * Extracted so both runShellCommand() and other process-running call
+   * sites (e.g. git mutation commands) can share the STDOUT/STDERR
+   * routing logic without duplicating the Process::ERR branching.
+   *
+   * @param string $type
+   *   The output stream type, Process::OUT or Process::ERR.
+   * @param string $buffer
+   *   The chunk of output produced by the process.
+   */
+  protected function forwardProcessOutput(string $type, string $buffer): void {
+    if ($type === Process::ERR) {
+      $this->io()->getErrorStyle()->write($buffer);
+    }
+    else {
+      $this->io()->write($buffer);
+    }
   }
 
 }
