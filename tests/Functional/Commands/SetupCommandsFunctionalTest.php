@@ -110,4 +110,46 @@ class SetupCommandsFunctionalTest extends FunctionalTestCase {
     $this->assertStringContainsString('minimal', $this->getOutput());
   }
 
+  /**
+   * Tests that suds:setup actually applies a configured recipe.
+   *
+   * Exercises the real recipe-invocation path end to end (issue #25),
+   * asserting the recipe's config lands rather than just checking the command
+   * string built to invoke it.
+   *
+   * Runs against whichever SUT the environment selects, so it covers both
+   * runner branches across the CI matrix without naming either: the Drupal
+   * 11.4 SUT resolves vendor/bin/dr, while the Drupal 10.4 job's SUT has no
+   * Composer bin and falls back to core/scripts/drupal. core/recipes/example
+   * ships in both versions.
+   */
+  public function testSetupAppliesConfiguredRecipe(): void {
+    $webroot = 'web';
+    $projectRoot = $this->createSutProjectFixture([
+      'drupal' => ['root' => $webroot],
+      'setup'  => ['recipes' => [$webroot . '/core/recipes/example']],
+    ]);
+
+    try {
+      $this->drush(
+        'suds:setup',
+        [],
+        ['yes' => TRUE, 'root' => $this->getSutRoot()],
+        NULL,
+        $projectRoot,
+      );
+
+      $this->assertStringContainsString(
+        'Applying recipe: ' . $webroot . '/core/recipes/example',
+        $this->getOutput(),
+      );
+    }
+    finally {
+      $this->removeDirectory($projectRoot);
+    }
+
+    $this->drush('pm:list', [], ['format' => 'json'], NULL, $this->getSutRoot());
+    $this->assertStringContainsString('"node"', $this->getOutput());
+  }
+
 }

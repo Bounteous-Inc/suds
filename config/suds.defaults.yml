@@ -180,12 +180,17 @@ deps_update:
 
 setup:
   # Drupal recipes to apply after site install, in order (requires Drupal 10.4+).
-  # Each entry is a path to a recipe directory, relative to the project root.
   # The profile (drupal.profile) is installed first; recipes layer on top of it.
-  # Example:
+  #
+  # Each entry is a recipe directory, relative to the project root — the
+  # directory this file lives in. Note that means relative to the project root
+  # and NOT to drupal.root, so core's own recipes need the webroot prefix:
   #   recipes:
-  #     - web/core/recipes/basic-setup
-  #     - recipes/custom/my-recipe
+  #     - web/core/recipes/basic-setup   # ships with core, under drupal.root
+  #     - recipes/custom/my-recipe       # project recipe, beside the webroot
+  #
+  # Absolute paths are not supported. Applied via vendor/bin/dr on Drupal
+  # 11.4+, falling back to <drupal.root>/core/scripts/drupal on 10.4 to 11.3.
   recipes: []
 
   hooks:

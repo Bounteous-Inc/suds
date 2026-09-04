@@ -6,10 +6,12 @@ namespace Bounteous\Suds\Tests\Unit\Commands;
 
 use Bounteous\Suds\Config\ConfigLoaderInterface;
 use Bounteous\Suds\Drush\Commands\SetupCommands;
+use Bounteous\Suds\Tests\Support\TempDirectoryTrait;
 use Consolidation\SiteAlias\SiteAlias;
 use Consolidation\SiteAlias\SiteAliasManagerInterface;
 use Drush\Style\DrushStyle;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
@@ -18,6 +20,199 @@ use PHPUnit\Framework\TestCase;
  */
 #[CoversClass(SetupCommands::class)]
 class SetupCommandsTest extends TestCase {
+
+  use TempDirectoryTrait;
+
+  /**
+   * The temporary project root, created on first use by projectRoot().
+   *
+   * @var string|null
+   */
+  private ?string $tempProjectRoot = NULL;
+
+  /**
+   * Webroot name used for the temporary project, mirroring drupal.root.
+   */
+  private const WEBROOT = 'web';
+
+  /**
+   * {@inheritdoc}
+   */
+  protected function tearDown(): void {
+    if ($this->tempProjectRoot !== NULL) {
+      $this->removeDirectory($this->tempProjectRoot);
+      $this->tempProjectRoot = NULL;
+    }
+    parent::tearDown();
+  }
+
+  /**
+   * Returns the temporary project root, creating it on first call.
+   *
+   * Created lazily so the majority of tests in this class, which drive
+   * setup() entirely through mocks, do not touch the filesystem at all.
+   */
+  private function projectRoot(): string {
+    return $this->tempProjectRoot ??= $this->createTempDir();
+  }
+
+  /**
+   * Verifies vendor/bin/dr is preferred when core registers it (11.4+).
+   *
+   * Both entry points exist on 11.4+, where core/scripts/drupal is a
+   * deprecated shim whose autoload fallback assumes a nested vendor/ — so the
+   * Composer bin must win even when the core script is also present.
+   */
+  public function testRequireRecipeRunnerPrefersComposerBin(): void {
+    $this->createComposerBin();
+    $this->createCoreScript();
+
+    $this->assertSame(
+      escapeshellarg($this->projectRoot() . '/vendor/bin/dr'),
+      $this->invokeRequireRecipeRunner(),
+    );
+  }
+
+  /**
+   * Verifies the fallback to core/scripts/drupal on Drupal 10.4 through 11.3.
+   *
+   * Those versions register no Composer bin at all, so the core script is the
+   * only available entry point and must be invoked through the PHP binary.
+   */
+  public function testRequireRecipeRunnerFallsBackToCoreScript(): void {
+    $this->createCoreScript();
+
+    $this->assertSame(
+      escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(
+        $this->projectRoot() . '/' . self::WEBROOT . '/core/scripts/drupal',
+      ),
+      $this->invokeRequireRecipeRunner(),
+    );
+  }
+
+  /**
+   * Verifies requireRecipeRunner() throws when no entry point is present.
+   */
+  public function testRequireRecipeRunnerThrowsWhenMissing(): void {
+    $this->expectException(\RuntimeException::class);
+    $this->invokeRequireRecipeRunner();
+  }
+
+  /**
+   * Verifies a relocated Composer vendor-dir is honoured.
+   *
+   * Composer's vendor directory is configurable, so a project that moves it
+   * must still have its recipe bin found rather than silently falling through
+   * to the deprecated core script.
+   */
+  public function testRequireRecipeRunnerHonoursConfiguredVendorDir(): void {
+    $this->writeComposerManifest(['config' => ['vendor-dir' => 'libraries']]);
+    mkdir($this->projectRoot() . '/libraries/bin', 0777, TRUE);
+    touch($this->projectRoot() . '/libraries/bin/dr');
+    // Present but must lose: the relocated Composer bin still takes priority.
+    $this->createCoreScript();
+
+    $this->assertSame(
+      escapeshellarg($this->projectRoot() . '/libraries/bin/dr'),
+      $this->invokeRequireRecipeRunner(),
+    );
+  }
+
+  /**
+   * Verifies an absolute vendor-dir is used as given, not re-rooted.
+   */
+  public function testVendorDirAcceptsAbsolutePath(): void {
+    // Never stat()ed, so it need not exist.
+    $this->writeComposerManifest(['config' => ['vendor-dir' => '/opt/shared/vendor']]);
+
+    $this->assertSame('/opt/shared/vendor', $this->invokeVendorDir());
+  }
+
+  /**
+   * Verifies the vendor-dir default when composer.json says nothing useful.
+   *
+   * @param string $manifest
+   *   Raw composer.json contents to write.
+   */
+  #[DataProvider('vendorDirDefaultCases')]
+  public function testVendorDirFallsBackToDefault(string $manifest): void {
+    file_put_contents($this->projectRoot() . '/composer.json', $manifest);
+
+    $this->assertSame($this->projectRoot() . '/vendor', $this->invokeVendorDir());
+  }
+
+  /**
+   * Supplies composer.json contents that should yield the default vendor dir.
+   *
+   * @return array<string, array{string}>
+   *   Test cases keyed by description.
+   */
+  public static function vendorDirDefaultCases(): array {
+    return [
+      'no config section' => ['{"name":"acme/site"}'],
+      'config without vendor-dir' => ['{"config":{"sort-packages":true}}'],
+      'empty vendor-dir' => ['{"config":{"vendor-dir":""}}'],
+      'non-string vendor-dir' => ['{"config":{"vendor-dir":["vendor"]}}'],
+      'malformed json' => ['{not valid json'],
+    ];
+  }
+
+  /**
+   * Verifies the vendor-dir default when there is no composer.json at all.
+   */
+  public function testVendorDirFallsBackWithoutComposerJson(): void {
+    $this->assertSame($this->projectRoot() . '/vendor', $this->invokeVendorDir());
+  }
+
+  /**
+   * Writes a composer.json into the temporary project root.
+   *
+   * @param array<string, mixed> $manifest
+   *   Manifest contents to encode.
+   */
+  private function writeComposerManifest(array $manifest): void {
+    file_put_contents(
+      $this->projectRoot() . '/composer.json',
+      (string) json_encode($manifest),
+    );
+  }
+
+  /**
+   * Invokes the protected vendorDir() against the temporary root.
+   */
+  private function invokeVendorDir(): string {
+    $method = new \ReflectionMethod(SetupCommands::class, 'vendorDir');
+    return $method->invoke(new SetupCommands(), $this->projectRoot());
+  }
+
+  /**
+   * Creates the Composer-registered recipe bin in the temporary project.
+   */
+  private function createComposerBin(): void {
+    mkdir($this->projectRoot() . '/vendor/bin', 0777, TRUE);
+    touch($this->projectRoot() . '/vendor/bin/dr');
+  }
+
+  /**
+   * Creates core/scripts/drupal under the temporary project's webroot.
+   */
+  private function createCoreScript(): void {
+    $scripts = $this->projectRoot() . '/' . self::WEBROOT . '/core/scripts';
+    mkdir($scripts, 0777, TRUE);
+    touch($scripts . '/drupal');
+  }
+
+  /**
+   * Invokes the protected requireRecipeRunner() against the temporary root.
+   */
+  private function invokeRequireRecipeRunner(): string {
+    $method = new \ReflectionMethod(SetupCommands::class, 'requireRecipeRunner');
+    return $method->invoke(
+      new SetupCommands(),
+      $this->projectRoot(),
+      $this->projectRoot() . '/' . self::WEBROOT,
+    );
+  }
 
   /**
    * Verifies suds:setup has the correct annotations.
@@ -138,20 +333,81 @@ class SetupCommandsTest extends TestCase {
     ));
     $command->method('runDrushCommand')
       ->willReturnCallback(static function (): void {});
+    $command->method('requireRecipeRunner')->willReturn("'/tmp/vendor/bin/dr'");
     $command->method('runShellCommand')
       ->willReturnCallback(
-        static function (string $cmd) use (&$capturedCmds): void {
-          $capturedCmds[] = $cmd;
+        static function (string $cmd, string $cwd) use (&$capturedCmds): void {
+          $capturedCmds[] = [$cmd, $cwd];
         }
       );
 
     $command->setup(['profile' => '', 'existing-config' => FALSE]);
 
     $this->assertCount(2, $capturedCmds);
-    $this->assertStringContainsString('drupal recipe', $capturedCmds[0]);
-    $this->assertStringContainsString('recipes/foo', $capturedCmds[0]);
-    $this->assertStringContainsString('drupal recipe', $capturedCmds[1]);
-    $this->assertStringContainsString('recipes/bar', $capturedCmds[1]);
+    $this->assertStringContainsString("'/tmp/vendor/bin/dr' recipe '", $capturedCmds[0][0]);
+    $this->assertStringContainsString('recipes/foo', $capturedCmds[0][0]);
+    $this->assertStringContainsString("'/tmp/vendor/bin/dr' recipe '", $capturedCmds[1][0]);
+    $this->assertStringContainsString('recipes/bar', $capturedCmds[1][0]);
+  }
+
+  /**
+   * Verifies recipes are applied from the Drupal root, not the project root.
+   *
+   * The core/scripts/drupal fallback loads its container from the relative
+   * path core/core.services.yml, so running it from anywhere else fails with
+   * "The service file is not valid". Recipe paths stay absolute so the cwd
+   * cannot affect which recipe is resolved.
+   */
+  public function testSetupAppliesRecipesFromDrupalRoot(): void {
+    $captured = [];
+    $command = $this->buildCommand($this->makeConfigLoader(
+      ['root' => 'docroot'],
+      ['recipes' => ['recipes/foo']],
+    ));
+    $command->method('requireRecipeRunner')->willReturn("'dr'");
+    $command->method('runShellCommand')
+      ->willReturnCallback(
+        static function (string $cmd, string $cwd) use (&$captured): void {
+          $captured[] = [$cmd, $cwd];
+        }
+      );
+
+    $command->setup(['profile' => '', 'existing-config' => FALSE]);
+
+    $this->assertSame('/tmp/docroot', $captured[0][1]);
+    $this->assertStringContainsString("recipe '/tmp/recipes/foo'", $captured[0][0]);
+  }
+
+  /**
+   * Verifies the runner is resolved against the configured drupal.root.
+   *
+   * The core/scripts/drupal fallback lives under the webroot, so a project
+   * that renames it must still get a correct lookup path.
+   */
+  public function testSetupResolvesRunnerAgainstConfiguredDrupalRoot(): void {
+    $command = $this->buildCommand($this->makeConfigLoader(
+      ['root' => 'docroot'],
+      ['recipes' => ['recipes/foo']],
+    ));
+    $command->expects($this->once())
+      ->method('requireRecipeRunner')
+      ->with('/tmp', '/tmp/docroot')
+      ->willReturn("'dr'");
+
+    $command->setup(['profile' => '', 'existing-config' => FALSE]);
+  }
+
+  /**
+   * Verifies setup() does not resolve a recipe runner when none are configured.
+   *
+   * Consumers who never set setup.recipes should not be forced to have
+   * drupal/core's recipe entry point available.
+   */
+  public function testSetupSkipsRecipeRunnerLookupWhenNoRecipes(): void {
+    $command = $this->buildCommand($this->makeConfigLoader());
+    $command->expects($this->never())->method('requireRecipeRunner');
+
+    $command->setup(['profile' => '', 'existing-config' => FALSE]);
   }
 
   /**
@@ -226,6 +482,7 @@ class SetupCommandsTest extends TestCase {
         'redispatchOptions',
         'runDrushCommand',
         'runShellCommand',
+        'requireRecipeRunner',
       ])
       ->getMock();
     $command->method('io')->willReturn($this->createMock(DrushStyle::class));
