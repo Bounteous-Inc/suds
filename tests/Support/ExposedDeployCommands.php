@@ -23,6 +23,13 @@ class ExposedDeployCommands extends DeployCommands {
   public array $shellLog = [];
 
   /**
+   * Git commands captured by runGitCommand().
+   *
+   * @var list<array{args: list<string>, cwd: string}>
+   */
+  public array $gitLog = [];
+
+  /**
    * Manifest writes captured by writeManifestFile().
    *
    * @var list<array{path: string, content: string}>
@@ -62,6 +69,13 @@ class ExposedDeployCommands extends DeployCommands {
    */
   protected function runShellCommand(string $cmd, string $cwd = ''): void {
     $this->shellLog[] = ['cmd' => $cmd, 'cwd' => $cwd];
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  protected function runGitCommand(array $args, string $cwd): void {
+    $this->gitLog[] = ['args' => $args, 'cwd' => $cwd];
   }
 
   /**

@@ -49,13 +49,14 @@ class DeployCommandsTest extends TestCase {
    */
   public function testDeployThrowsWhenBranchEmpty(): void {
     $command = $this->getMockBuilder(DeployCommands::class)
-      ->onlyMethods(['io', 'getCurrentBranch', 'getHeadHash', 'buildArtifact', 'runShellCommand'])
+      ->onlyMethods(['io', 'getCurrentBranch', 'getHeadHash', 'buildArtifact', 'runShellCommand', 'runGitCommand'])
       ->getMock();
     $command->method('io')->willReturn($this->createMock(DrushStyle::class));
     $command->method('getCurrentBranch')->willReturn('');
     $command->method('getHeadHash')->willReturn('deadbeef12345678deadbeef12345678deadbeef');
     $command->method('buildArtifact')->willReturn('/tmp/artifact-test');
     $command->method('runShellCommand')->willReturnCallback(static function (): void {});
+    $command->method('runGitCommand')->willReturnCallback(static function (): void {});
     $command->setConfigLoader($this->makeConfigLoader());
 
     $this->expectException(\RuntimeException::class);
@@ -69,13 +70,14 @@ class DeployCommandsTest extends TestCase {
    */
   public function testDeployThrowsOnDetachedHead(): void {
     $command = $this->getMockBuilder(DeployCommands::class)
-      ->onlyMethods(['io', 'getCurrentBranch', 'getHeadHash', 'buildArtifact', 'runShellCommand'])
+      ->onlyMethods(['io', 'getCurrentBranch', 'getHeadHash', 'buildArtifact', 'runShellCommand', 'runGitCommand'])
       ->getMock();
     $command->method('io')->willReturn($this->createMock(DrushStyle::class));
     $command->method('getCurrentBranch')->willReturn('HEAD');
     $command->method('getHeadHash')->willReturn('deadbeef12345678deadbeef12345678deadbeef');
     $command->method('buildArtifact')->willReturn('/tmp/artifact-test');
     $command->method('runShellCommand')->willReturnCallback(static function (): void {});
+    $command->method('runGitCommand')->willReturnCallback(static function (): void {});
     $command->setConfigLoader($this->makeConfigLoader());
 
     $this->expectException(\RuntimeException::class);
@@ -157,18 +159,22 @@ class DeployCommandsTest extends TestCase {
 
     $command->method('runShellCommand')
       ->willReturnCallback(static function (string $cmd) use (&$callLog): void {
-        $callLog[] = $cmd;
+        $callLog[] = ['type' => 'shell', 'value' => $cmd];
+      });
+    $command->method('runGitCommand')
+      ->willReturnCallback(static function (array $args) use (&$callLog): void {
+        $callLog[] = ['type' => 'git', 'value' => $args];
       });
 
     $command->deploy();
 
     $pushIdx = NULL;
     $postIdx = NULL;
-    foreach ($callLog as $i => $cmd) {
-      if (str_contains($cmd, 'git push')) {
+    foreach ($callLog as $i => $entry) {
+      if ($entry['type'] === 'git' && ($entry['value'][0] ?? NULL) === 'push') {
         $pushIdx = $i;
       }
-      if ($cmd === 'echo post-deploy') {
+      if ($entry['type'] === 'shell' && $entry['value'] === 'echo post-deploy') {
         $postIdx = $i;
       }
     }
@@ -181,16 +187,19 @@ class DeployCommandsTest extends TestCase {
   /**
    * Verifies that with all hook lists empty, only core git commands run.
    *
-   * With pre_deploy=[], build_steps=[], and post_deploy=[] the only
-   * runShellCommand calls should be: git config user.name, git config
-   * user.email, git add, git commit, and git push — exactly five.
+   * With pre_deploy=[], build_steps=[], and post_deploy=[] there are no
+   * remaining runShellCommand calls (build_steps/hooks were the only
+   * consumers); the git identity, add, commit, and push calls now go
+   * through runGitCommand instead — exactly five of those.
    */
   public function testDeploySkipsHooksWhenAllEmpty(): void {
     $command = $this->buildCommand();
     $command->setConfigLoader($this->makeConfigLoader());
 
-    $command->expects($this->exactly(5))
+    $command->expects($this->never())
       ->method('runShellCommand');
+    $command->expects($this->exactly(5))
+      ->method('runGitCommand');
 
     $command->deploy();
   }
@@ -203,12 +212,13 @@ class DeployCommandsTest extends TestCase {
    */
   public function testDeploySubstitutesSourceBranchInArtifactBranch(): void {
     $command = $this->getMockBuilder(DeployCommands::class)
-      ->onlyMethods(['io', 'getCurrentBranch', 'getHeadHash', 'buildArtifact', 'runShellCommand'])
+      ->onlyMethods(['io', 'getCurrentBranch', 'getHeadHash', 'buildArtifact', 'runShellCommand', 'runGitCommand'])
       ->getMock();
     $command->method('io')->willReturn($this->createMock(DrushStyle::class));
     $command->method('getCurrentBranch')->willReturn('feature-x');
     $command->method('getHeadHash')->willReturn('deadbeef12345678deadbeef12345678deadbeef');
     $command->method('runShellCommand')->willReturnCallback(static function (string $cmd, string $cwd): void {});
+    $command->method('runGitCommand')->willReturnCallback(static function (array $args, string $cwd): void {});
 
     $command->setConfigLoader($this->makeConfigLoader(
       repoBranch: '$SUDS_BRANCH-artifact',
@@ -235,31 +245,32 @@ class DeployCommandsTest extends TestCase {
    */
   public function testDeployExpandsEnvVarsInCommitMessage(): void {
     $command = $this->getMockBuilder(DeployCommands::class)
-      ->onlyMethods(['io', 'getCurrentBranch', 'getHeadHash', 'buildArtifact', 'runShellCommand'])
+      ->onlyMethods(['io', 'getCurrentBranch', 'getHeadHash', 'buildArtifact', 'runShellCommand', 'runGitCommand'])
       ->getMock();
     $command->method('io')->willReturn($this->createMock(DrushStyle::class));
     $command->method('getCurrentBranch')->willReturn('main');
     $command->method('getHeadHash')->willReturn('abc1234def56789abc1234def56789abc1234def5');
     $command->method('buildArtifact')->willReturn('/tmp/artifact-test');
+    $command->method('runShellCommand')->willReturnCallback(static function (): void {});
 
     $command->setConfigLoader($this->makeConfigLoader(
       commitMessage: 'Deploy $SUDS_BRANCH [$SUDS_SHORT_HASH]',
     ));
 
-    $shellCalls = [];
-    $command->method('runShellCommand')
-      ->willReturnCallback(static function (string $cmd) use (&$shellCalls): void {
-        $shellCalls[] = $cmd;
+    $gitCalls = [];
+    $command->method('runGitCommand')
+      ->willReturnCallback(static function (array $args) use (&$gitCalls): void {
+        $gitCalls[] = $args;
       });
 
     $command->deploy();
 
-    $commitCalls = array_filter($shellCalls, static fn(string $c) => str_contains($c, 'git commit'));
+    $commitCalls = array_filter($gitCalls, static fn(array $a) => ($a[0] ?? NULL) === 'commit');
     $this->assertNotEmpty($commitCalls, 'git commit was not called.');
 
     // 'abc1234def56789abc1234def56789abc1234def5' — first 8 chars = 'abc1234d'
-    $commitCmd = reset($commitCalls);
-    $this->assertStringContainsString('Deploy main [abc1234d]', $commitCmd);
+    $commitArgs = reset($commitCalls);
+    $this->assertSame('Deploy main [abc1234d]', $commitArgs[3]);
   }
 
   /**
@@ -274,25 +285,25 @@ class DeployCommandsTest extends TestCase {
       gitEmail: 'ci@example.com',
     ));
 
-    $command->method('runShellCommand')
-      ->willReturnCallback(static function (string $cmd, string $cwd) use (&$calls): void {
-        $calls[] = ['cmd' => $cmd, 'cwd' => $cwd];
+    $command->method('runGitCommand')
+      ->willReturnCallback(static function (array $args, string $cwd) use (&$calls): void {
+        $calls[] = ['args' => $args, 'cwd' => $cwd];
       });
 
     $command->deploy();
 
-    $nameCalls = array_filter($calls, static fn(array $c) => str_contains($c['cmd'], 'git config user.name'));
-    $emailCalls = array_filter($calls, static fn(array $c) => str_contains($c['cmd'], 'git config user.email'));
+    $nameCalls = array_filter($calls, static fn(array $c) => ($c['args'][0] ?? NULL) === 'config' && ($c['args'][1] ?? NULL) === 'user.name');
+    $emailCalls = array_filter($calls, static fn(array $c) => ($c['args'][0] ?? NULL) === 'config' && ($c['args'][1] ?? NULL) === 'user.email');
 
     $this->assertNotEmpty($nameCalls, 'git config user.name was not called.');
     $this->assertNotEmpty($emailCalls, 'git config user.email was not called.');
 
     foreach ($nameCalls as $call) {
-      $this->assertStringContainsString('My CI Bot', $call['cmd']);
+      $this->assertSame('My CI Bot', $call['args'][2]);
       $this->assertSame('/tmp/artifact-test', $call['cwd']);
     }
     foreach ($emailCalls as $call) {
-      $this->assertStringContainsString('ci@example.com', $call['cmd']);
+      $this->assertSame('ci@example.com', $call['args'][2]);
       $this->assertSame('/tmp/artifact-test', $call['cwd']);
     }
   }
@@ -309,17 +320,18 @@ class DeployCommandsTest extends TestCase {
       commitMessage: 'prefix-$SUDS_TEST_UNKNOWN_XYZ-suffix',
     ));
 
-    $shellCalls = [];
-    $command->method('runShellCommand')
-      ->willReturnCallback(static function (string $cmd) use (&$shellCalls): void {
-        $shellCalls[] = $cmd;
+    $gitCalls = [];
+    $command->method('runGitCommand')
+      ->willReturnCallback(static function (array $args) use (&$gitCalls): void {
+        $gitCalls[] = $args;
       });
 
     $command->deploy();
 
-    $commitCalls = array_filter($shellCalls, static fn(string $c) => str_contains($c, 'git commit'));
+    $commitCalls = array_filter($gitCalls, static fn(array $a) => ($a[0] ?? NULL) === 'commit');
     $this->assertNotEmpty($commitCalls);
-    $this->assertStringContainsString('prefix--suffix', reset($commitCalls));
+    $commitArgs = reset($commitCalls);
+    $this->assertSame('prefix--suffix', $commitArgs[3]);
   }
 
   /**
@@ -327,28 +339,30 @@ class DeployCommandsTest extends TestCase {
    */
   public function testExpandEnvVarsBracedSyntax(): void {
     $command = $this->getMockBuilder(DeployCommands::class)
-      ->onlyMethods(['io', 'getCurrentBranch', 'getHeadHash', 'buildArtifact', 'runShellCommand'])
+      ->onlyMethods(['io', 'getCurrentBranch', 'getHeadHash', 'buildArtifact', 'runShellCommand', 'runGitCommand'])
       ->getMock();
     $command->method('io')->willReturn($this->createMock(DrushStyle::class));
     $command->method('getCurrentBranch')->willReturn('release-1');
     $command->method('getHeadHash')->willReturn('deadbeef12345678deadbeef12345678deadbeef');
     $command->method('buildArtifact')->willReturn('/tmp/artifact-test');
+    $command->method('runShellCommand')->willReturnCallback(static function (): void {});
 
     $command->setConfigLoader($this->makeConfigLoader(
       commitMessage: 'Deploy ${SUDS_BRANCH}',
     ));
 
-    $shellCalls = [];
-    $command->method('runShellCommand')
-      ->willReturnCallback(static function (string $cmd) use (&$shellCalls): void {
-        $shellCalls[] = $cmd;
+    $gitCalls = [];
+    $command->method('runGitCommand')
+      ->willReturnCallback(static function (array $args) use (&$gitCalls): void {
+        $gitCalls[] = $args;
       });
 
     $command->deploy();
 
-    $commitCalls = array_filter($shellCalls, static fn(string $c) => str_contains($c, 'git commit'));
+    $commitCalls = array_filter($gitCalls, static fn(array $a) => ($a[0] ?? NULL) === 'commit');
     $this->assertNotEmpty($commitCalls);
-    $this->assertStringContainsString('Deploy release-1', reset($commitCalls));
+    $commitArgs = reset($commitCalls);
+    $this->assertSame('Deploy release-1', $commitArgs[3]);
   }
 
   /**
@@ -360,17 +374,18 @@ class DeployCommandsTest extends TestCase {
       commitMessage: 'Automated deployment',
     ));
 
-    $shellCalls = [];
-    $command->method('runShellCommand')
-      ->willReturnCallback(static function (string $cmd) use (&$shellCalls): void {
-        $shellCalls[] = $cmd;
+    $gitCalls = [];
+    $command->method('runGitCommand')
+      ->willReturnCallback(static function (array $args) use (&$gitCalls): void {
+        $gitCalls[] = $args;
       });
 
     $command->deploy();
 
-    $commitCalls = array_filter($shellCalls, static fn(string $c) => str_contains($c, 'git commit'));
+    $commitCalls = array_filter($gitCalls, static fn(array $a) => ($a[0] ?? NULL) === 'commit');
     $this->assertNotEmpty($commitCalls);
-    $this->assertStringContainsString('Automated deployment', reset($commitCalls));
+    $commitArgs = reset($commitCalls);
+    $this->assertSame('Automated deployment', $commitArgs[3]);
   }
 
   /**
@@ -416,8 +431,7 @@ class DeployCommandsTest extends TestCase {
     $this->assertDirectoryExists($artifactDir);
     $this->removeDir($artifactDir);
 
-    $cmds = array_column($exposed->shellLog, 'cmd');
-    $this->assertContains('git init .', $cmds);
+    $this->assertContains(['init', '.'], array_column($exposed->gitLog, 'args'));
   }
 
   /**
@@ -430,10 +444,10 @@ class DeployCommandsTest extends TestCase {
     $this->assertDirectoryExists($artifactDir);
     $this->removeDir($artifactDir);
 
-    $cmds = array_column($exposed->shellLog, 'cmd');
-    $originCmd = array_filter($cmds, static fn(string $c) => str_contains($c, 'git remote add origin'));
-    $this->assertNotEmpty($originCmd);
-    $this->assertStringContainsString('git@example.com:org/repo.git', reset($originCmd));
+    $gitArgs = array_column($exposed->gitLog, 'args');
+    $originArgs = array_filter($gitArgs, static fn(array $a) => ($a[0] ?? NULL) === 'remote');
+    $this->assertNotEmpty($originArgs);
+    $this->assertSame(['remote', 'add', 'origin', 'git@example.com:org/repo.git'], reset($originArgs));
   }
 
   /**
@@ -446,10 +460,10 @@ class DeployCommandsTest extends TestCase {
     $this->assertDirectoryExists($artifactDir);
     $this->removeDir($artifactDir);
 
-    $cmds = array_column($exposed->shellLog, 'cmd');
-    $checkoutCmd = array_filter($cmds, static fn(string $c) => str_contains($c, 'git checkout -b'));
-    $this->assertNotEmpty($checkoutCmd);
-    $this->assertStringContainsString('feature-x-build', reset($checkoutCmd));
+    $gitArgs = array_column($exposed->gitLog, 'args');
+    $checkoutArgs = array_filter($gitArgs, static fn(array $a) => ($a[0] ?? NULL) === 'checkout' && ($a[1] ?? NULL) === '-b');
+    $this->assertNotEmpty($checkoutArgs);
+    $this->assertSame(['checkout', '-b', 'feature-x-build'], reset($checkoutArgs));
   }
 
   /**
@@ -466,17 +480,16 @@ class DeployCommandsTest extends TestCase {
     $this->assertDirectoryExists($artifactDir);
     $this->removeDir($artifactDir);
 
-    $cmds = array_column($exposed->shellLog, 'cmd');
-    $fetchCmd = array_filter($cmds, static fn(string $c) => str_contains($c, 'git fetch origin'));
-    $checkoutCmd = array_filter($cmds, static fn(string $c) => str_contains($c, 'git checkout -B'));
-    $freshCheckoutCmd = array_filter($cmds, static fn(string $c) => str_contains($c, 'git checkout -b'));
+    $gitArgs = array_column($exposed->gitLog, 'args');
+    $fetchArgs = array_filter($gitArgs, static fn(array $a) => ($a[0] ?? NULL) === 'fetch');
+    $checkoutBArgs = array_filter($gitArgs, static fn(array $a) => ($a[0] ?? NULL) === 'checkout' && ($a[1] ?? NULL) === '-B');
+    $freshCheckoutArgs = array_filter($gitArgs, static fn(array $a) => ($a[0] ?? NULL) === 'checkout' && ($a[1] ?? NULL) === '-b');
 
-    $this->assertNotEmpty($fetchCmd, 'git fetch was not called.');
-    $this->assertStringContainsString('feature-x-build', reset($fetchCmd));
-    $this->assertNotEmpty($checkoutCmd, 'git checkout -B was not called.');
-    $this->assertStringContainsString('feature-x-build', reset($checkoutCmd));
-    $this->assertStringContainsString('origin/feature-x-build', reset($checkoutCmd));
-    $this->assertEmpty($freshCheckoutCmd, 'A fresh branch should not be created when the branch already exists.');
+    $this->assertNotEmpty($fetchArgs, 'git fetch was not called.');
+    $this->assertSame(['fetch', 'origin', 'feature-x-build'], reset($fetchArgs));
+    $this->assertNotEmpty($checkoutBArgs, 'git checkout -B was not called.');
+    $this->assertSame(['checkout', '-B', 'feature-x-build', 'origin/feature-x-build'], reset($checkoutBArgs));
+    $this->assertEmpty($freshCheckoutArgs, 'A fresh branch should not be created when the branch already exists.');
   }
 
   /**
@@ -541,15 +554,16 @@ class DeployCommandsTest extends TestCase {
    */
   private function buildCommand(): DeployCommands&MockObject {
     $command = $this->getMockBuilder(DeployCommands::class)
-      ->onlyMethods(['io', 'getCurrentBranch', 'getHeadHash', 'buildArtifact', 'runShellCommand'])
+      ->onlyMethods(['io', 'getCurrentBranch', 'getHeadHash', 'buildArtifact', 'runShellCommand', 'runGitCommand'])
       ->getMock();
 
     $command->method('io')->willReturn($this->createMock(DrushStyle::class));
     $command->method('getCurrentBranch')->willReturn('main');
     $command->method('getHeadHash')->willReturn('deadbeef12345678deadbeef12345678deadbeef');
     $command->method('buildArtifact')->willReturn('/tmp/artifact-test');
-    // runShellCommand has a void return type; use a callback stub.
+    // runShellCommand/runGitCommand have void return types; use callback stubs.
     $command->method('runShellCommand')->willReturnCallback(static function (string $cmd, string $cwd): void {});
+    $command->method('runGitCommand')->willReturnCallback(static function (array $args, string $cwd): void {});
 
     return $command;
   }
@@ -563,12 +577,13 @@ class DeployCommandsTest extends TestCase {
    */
   public function testDeployMergesExcludeExtra(): void {
     $command = $this->getMockBuilder(DeployCommands::class)
-      ->onlyMethods(['io', 'getCurrentBranch', 'getHeadHash', 'buildArtifact', 'runShellCommand'])
+      ->onlyMethods(['io', 'getCurrentBranch', 'getHeadHash', 'buildArtifact', 'runShellCommand', 'runGitCommand'])
       ->getMock();
     $command->method('io')->willReturn($this->createMock(DrushStyle::class));
     $command->method('getCurrentBranch')->willReturn('main');
     $command->method('getHeadHash')->willReturn('deadbeef12345678deadbeef12345678deadbeef');
     $command->method('runShellCommand')->willReturnCallback(static function (string $cmd, string $cwd): void {});
+    $command->method('runGitCommand')->willReturnCallback(static function (array $args, string $cwd): void {});
 
     $command->setConfigLoader($this->makeConfigLoader(
       exclude: ['.gitignore'],
@@ -595,15 +610,16 @@ class DeployCommandsTest extends TestCase {
     $callLog = [];
 
     $command = $this->getMockBuilder(DeployCommands::class)
-      ->onlyMethods(['io', 'getCurrentBranch', 'getHeadHash', 'buildArtifact', 'runShellCommand'])
+      ->onlyMethods(['io', 'getCurrentBranch', 'getHeadHash', 'buildArtifact', 'runShellCommand', 'runGitCommand'])
       ->getMock();
     $command->method('io')->willReturn($this->createMock(DrushStyle::class));
     $command->method('getCurrentBranch')->willReturn('main');
     $command->method('getHeadHash')->willReturn('deadbeef12345678deadbeef12345678deadbeef');
     $command->method('buildArtifact')->willReturn('/tmp/artifact-test');
-    $command->method('runShellCommand')
-      ->willReturnCallback(static function (string $cmd) use (&$callLog): void {
-        $callLog[] = $cmd;
+    $command->method('runShellCommand')->willReturnCallback(static function (): void {});
+    $command->method('runGitCommand')
+      ->willReturnCallback(static function (array $args) use (&$callLog): void {
+        $callLog[] = $args;
       });
     $command->setConfigLoader($this->makeConfigLoader());
 
@@ -612,14 +628,14 @@ class DeployCommandsTest extends TestCase {
     $pushIdx = NULL;
     $tagIdx = NULL;
     $tagPushIdx = NULL;
-    foreach ($callLog as $i => $cmd) {
-      if (str_contains($cmd, 'git push') && str_contains($cmd, 'main-build')) {
+    foreach ($callLog as $i => $args) {
+      if ($args[0] === 'push' && in_array('main-build', $args, TRUE)) {
         $pushIdx = $i;
       }
-      if (str_contains($cmd, 'git tag')) {
+      if ($args[0] === 'tag') {
         $tagIdx = $i;
       }
-      if (str_contains($cmd, 'git push') && str_contains($cmd, 'v1.2.3')) {
+      if ($args[0] === 'push' && in_array('v1.2.3', $args, TRUE)) {
         $tagPushIdx = $i;
       }
     }
@@ -627,7 +643,7 @@ class DeployCommandsTest extends TestCase {
     $this->assertNotNull($pushIdx, 'Branch push was not called.');
     $this->assertNotNull($tagIdx, 'git tag was not called.');
     $this->assertNotNull($tagPushIdx, 'Tag push was not called.');
-    $this->assertStringContainsString('v1.2.3', $callLog[$tagIdx]);
+    $this->assertSame(['tag', 'v1.2.3'], $callLog[$tagIdx]);
     $this->assertGreaterThan($pushIdx, $tagIdx, 'git tag must run after branch push.');
     $this->assertGreaterThan($tagIdx, $tagPushIdx, 'git push tag must run after git tag.');
   }
@@ -645,27 +661,29 @@ class DeployCommandsTest extends TestCase {
     $callLog = [];
 
     $command = $this->getMockBuilder(DeployCommands::class)
-      ->onlyMethods(['io', 'getCurrentBranch', 'getHeadHash', 'buildArtifact', 'runShellCommand'])
+      ->onlyMethods(['io', 'getCurrentBranch', 'getHeadHash', 'buildArtifact', 'runShellCommand', 'runGitCommand'])
       ->getMock();
     $command->method('io')->willReturn($this->createMock(DrushStyle::class));
     $command->method('getCurrentBranch')->willReturn('main');
     $command->method('getHeadHash')->willReturn('deadbeef12345678deadbeef12345678deadbeef');
     $command->method('buildArtifact')->willReturn('/tmp/artifact-test');
-    $command->method('runShellCommand')
-      ->willReturnCallback(static function (string $cmd) use (&$callLog): void {
-        $callLog[] = $cmd;
+    $command->method('runShellCommand')->willReturnCallback(static function (): void {});
+    $command->method('runGitCommand')
+      ->willReturnCallback(static function (array $args) use (&$callLog): void {
+        $callLog[] = $args;
       });
     $command->setConfigLoader($this->makeConfigLoader(forcePush: $forcePush));
 
     $command->deploy();
 
-    $pushCmds = array_filter($callLog, static fn(string $c) => str_contains($c, 'git push origin') && str_contains($c, 'main-build'));
-    $this->assertNotEmpty($pushCmds, 'Branch push was not called.');
+    $pushArgs = array_filter($callLog, static fn(array $a) => $a[0] === 'push' && in_array('main-build', $a, TRUE));
+    $this->assertNotEmpty($pushArgs, 'Branch push was not called.');
+    $push = reset($pushArgs);
     if ($expectForce) {
-      $this->assertStringContainsString('--force', reset($pushCmds));
+      $this->assertContains('--force', $push);
     }
     else {
-      $this->assertStringNotContainsString('--force', reset($pushCmds));
+      $this->assertNotContains('--force', $push);
     }
   }
 
@@ -689,13 +707,22 @@ class DeployCommandsTest extends TestCase {
     $manifestCalls = [];
 
     $command = $this->getMockBuilder(DeployCommands::class)
-      ->onlyMethods(['io', 'getCurrentBranch', 'getHeadHash', 'buildArtifact', 'runShellCommand', 'writeManifestFile'])
+      ->onlyMethods([
+        'io',
+        'getCurrentBranch',
+        'getHeadHash',
+        'buildArtifact',
+        'runShellCommand',
+        'runGitCommand',
+        'writeManifestFile',
+      ])
       ->getMock();
     $command->method('io')->willReturn($this->createMock(DrushStyle::class));
     $command->method('getCurrentBranch')->willReturn('develop');
     $command->method('getHeadHash')->willReturn('abc1234def56789abc1234def56789abc1234def5');
     $command->method('buildArtifact')->willReturn('/tmp/artifact-test');
     $command->method('runShellCommand')->willReturnCallback(static function (): void {});
+    $command->method('runGitCommand')->willReturnCallback(static function (): void {});
     $command->method('writeManifestFile')
       ->willReturnCallback(static function (string $path, string $content) use (&$manifestCalls): void {
         $manifestCalls[] = ['path' => $path, 'content' => $content];
@@ -719,13 +746,22 @@ class DeployCommandsTest extends TestCase {
     $manifestCalls = [];
 
     $command = $this->getMockBuilder(DeployCommands::class)
-      ->onlyMethods(['io', 'getCurrentBranch', 'getHeadHash', 'buildArtifact', 'runShellCommand', 'writeManifestFile'])
+      ->onlyMethods([
+        'io',
+        'getCurrentBranch',
+        'getHeadHash',
+        'buildArtifact',
+        'runShellCommand',
+        'runGitCommand',
+        'writeManifestFile',
+      ])
       ->getMock();
     $command->method('io')->willReturn($this->createMock(DrushStyle::class));
     $command->method('getCurrentBranch')->willReturn('main');
     $command->method('getHeadHash')->willReturn('deadbeef12345678deadbeef12345678deadbeef');
     $command->method('buildArtifact')->willReturn('/tmp/artifact-test');
     $command->method('runShellCommand')->willReturnCallback(static function (): void {});
+    $command->method('runGitCommand')->willReturnCallback(static function (): void {});
     $command->method('writeManifestFile')
       ->willReturnCallback(static function (string $path, string $content) use (&$manifestCalls): void {
         $manifestCalls[] = ['path' => $path, 'content' => $content];
@@ -743,13 +779,22 @@ class DeployCommandsTest extends TestCase {
    */
   public function testDeploySkipsManifestWhenDisabled(): void {
     $command = $this->getMockBuilder(DeployCommands::class)
-      ->onlyMethods(['io', 'getCurrentBranch', 'getHeadHash', 'buildArtifact', 'runShellCommand', 'writeManifestFile'])
+      ->onlyMethods([
+        'io',
+        'getCurrentBranch',
+        'getHeadHash',
+        'buildArtifact',
+        'runShellCommand',
+        'runGitCommand',
+        'writeManifestFile',
+      ])
       ->getMock();
     $command->method('io')->willReturn($this->createMock(DrushStyle::class));
     $command->method('getCurrentBranch')->willReturn('main');
     $command->method('getHeadHash')->willReturn('deadbeef12345678deadbeef12345678deadbeef');
     $command->method('buildArtifact')->willReturn('/tmp/artifact-test');
     $command->method('runShellCommand')->willReturnCallback(static function (): void {});
+    $command->method('runGitCommand')->willReturnCallback(static function (): void {});
     $command->expects($this->never())->method('writeManifestFile');
     $command->setConfigLoader($this->makeConfigLoader(manifest: FALSE));
 
@@ -766,15 +811,24 @@ class DeployCommandsTest extends TestCase {
     $callLog = [];
 
     $command = $this->getMockBuilder(DeployCommands::class)
-      ->onlyMethods(['io', 'getCurrentBranch', 'getHeadHash', 'buildArtifact', 'runShellCommand', 'writeManifestFile'])
+      ->onlyMethods([
+        'io',
+        'getCurrentBranch',
+        'getHeadHash',
+        'buildArtifact',
+        'runShellCommand',
+        'runGitCommand',
+        'writeManifestFile',
+      ])
       ->getMock();
     $command->method('io')->willReturn($this->createMock(DrushStyle::class));
     $command->method('getCurrentBranch')->willReturn('main');
     $command->method('getHeadHash')->willReturn('deadbeef12345678deadbeef12345678deadbeef');
     $command->method('buildArtifact')->willReturn('/tmp/artifact-test');
-    $command->method('runShellCommand')
-      ->willReturnCallback(static function (string $cmd) use (&$callLog): void {
-        $callLog[] = ['type' => 'shell', 'value' => $cmd];
+    $command->method('runShellCommand')->willReturnCallback(static function (): void {});
+    $command->method('runGitCommand')
+      ->willReturnCallback(static function (array $args) use (&$callLog): void {
+        $callLog[] = ['type' => 'git', 'value' => $args];
       });
     $command->method('writeManifestFile')
       ->willReturnCallback(static function () use (&$callLog): void {
@@ -790,7 +844,7 @@ class DeployCommandsTest extends TestCase {
       if ($entry['type'] === 'manifest') {
         $manifestIdx = $i;
       }
-      if ($entry['type'] === 'shell' && $entry['value'] === 'git add -A .') {
+      if ($entry['type'] === 'git' && $entry['value'] === ['add', '-A', '.']) {
         $gitAddIdx = $i;
       }
     }

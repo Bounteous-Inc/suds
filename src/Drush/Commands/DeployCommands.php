@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Bounteous\Suds\Drush\Commands;
 
 use Bounteous\Suds\Config\ConfigLoaderAwareTrait;
+use Bounteous\Suds\Process\GitCommandRunner;
 use Drush\Commands\DrushCommands;
 
 /**
@@ -144,38 +145,23 @@ class DeployCommands extends DrushCommands {
       }
 
       // Configure git identity in artifact repo.
-      $this->runShellCommand(
-        sprintf('git config user.name %s', escapeshellarg($config['deploy']['git']['name'])),
-        $artifactDir,
-      );
-      $this->runShellCommand(
-        sprintf('git config user.email %s', escapeshellarg($config['deploy']['git']['email'])),
-        $artifactDir,
-      );
+      $this->runGitCommand(['config', 'user.name', $config['deploy']['git']['name']], $artifactDir);
+      $this->runGitCommand(['config', 'user.email', $config['deploy']['git']['email']], $artifactDir);
 
       // Commit and push the artifact.
       $commitMessage = $this->expandEnvVars($config['deploy']['commit_message']);
-      $this->runShellCommand('git add -A .', $artifactDir);
-      $this->runShellCommand(
-        sprintf('git commit --allow-empty -m %s', escapeshellarg($commitMessage)),
-        $artifactDir,
-      );
-      $pushCommand = sprintf('git push origin %s', escapeshellarg($artifactBranch));
+      $this->runGitCommand(['add', '-A', '.'], $artifactDir);
+      $this->runGitCommand(['commit', '--allow-empty', '-m', $commitMessage], $artifactDir);
+      $pushArgs = ['push', 'origin', $artifactBranch];
       if ($config['deploy']['force_push'] ?? FALSE) {
-        $pushCommand .= ' --force';
+        $pushArgs[] = '--force';
       }
-      $this->runShellCommand($pushCommand, $artifactDir);
+      $this->runGitCommand($pushArgs, $artifactDir);
 
       // Create and push tag on artifact repository if --tag is specified.
       if (!empty($options['tag'])) {
-        $this->runShellCommand(
-          sprintf('git tag %s', escapeshellarg((string) $options['tag'])),
-          $artifactDir,
-        );
-        $this->runShellCommand(
-          sprintf('git push origin %s', escapeshellarg((string) $options['tag'])),
-          $artifactDir,
-        );
+        $this->runGitCommand(['tag', (string) $options['tag']], $artifactDir);
+        $this->runGitCommand(['push', 'origin', (string) $options['tag']], $artifactDir);
       }
 
       // Run post_deploy hooks in project root.
@@ -201,8 +187,7 @@ class DeployCommands extends DrushCommands {
    *   The current branch name.
    */
   protected function getCurrentBranch(string $projectRoot): string {
-    // phpcs:ignore
-    return trim((string) shell_exec(sprintf('git -C %s rev-parse --abbrev-ref HEAD', escapeshellarg($projectRoot))));
+    return $this->gitCommandRunner()->run(['rev-parse', '--abbrev-ref', 'HEAD'], $projectRoot)->output;
   }
 
   /**
@@ -215,8 +200,7 @@ class DeployCommands extends DrushCommands {
    *   The full HEAD commit SHA.
    */
   protected function getHeadHash(string $projectRoot): string {
-    // phpcs:ignore
-    return trim((string) shell_exec(sprintf('git -C %s rev-parse HEAD', escapeshellarg($projectRoot))));
+    return $this->gitCommandRunner()->run(['rev-parse', 'HEAD'], $projectRoot)->output;
   }
 
   /**
@@ -236,16 +220,9 @@ class DeployCommands extends DrushCommands {
    *   TRUE if the branch exists on the remote.
    */
   protected function remoteBranchExists(string $repoUrl, string $branch): bool {
-    exec(
-      sprintf(
-        'git ls-remote --exit-code %s %s',
-        escapeshellarg($repoUrl),
-        escapeshellarg('refs/heads/' . $branch),
-      ),
-      $output,
-      $exitCode,
-    );
-    return $exitCode === 0;
+    return $this->gitCommandRunner()
+      ->run(['ls-remote', '--exit-code', $repoUrl, 'refs/heads/' . $branch], (string) getcwd())
+      ->isSuccessful();
   }
 
   /**
@@ -259,6 +236,36 @@ class DeployCommands extends DrushCommands {
       return;
     }
     $this->executeShellCommand($cmd, $cwd);
+  }
+
+  /**
+   * Runs a git command, streaming output and failing on error.
+   *
+   * Mirrors runShellCommand()'s dry-run override, but for the git-specific
+   * mutation call sites that go through GitCommandRunner instead of the
+   * shell-string-based Process::fromShellCommandline() path.
+   *
+   * @param list<string> $args
+   *   Arguments to pass to git, excluding the leading 'git'.
+   * @param string $cwd
+   *   Working directory for the command.
+   */
+  protected function runGitCommand(array $args, string $cwd): void {
+    if ($this->dryRun) {
+      $this->io()->note(sprintf('[dry-run] git %s (in %s)', implode(' ', $args), $cwd));
+      return;
+    }
+    $this->gitCommandRunner()->mustRun($args, $cwd, $this->forwardProcessOutput(...));
+  }
+
+  /**
+   * Returns the git command runner.
+   *
+   * @return \Bounteous\Suds\Process\GitCommandRunner
+   *   The git command runner. Stateless, so a fresh instance is fine.
+   */
+  private function gitCommandRunner(): GitCommandRunner {
+    return new GitCommandRunner();
   }
 
   /**
@@ -293,31 +300,15 @@ class DeployCommands extends DrushCommands {
       mkdir($artifactDir, 0777, TRUE);
     }
 
-    $this->runShellCommand('git init .', $artifactDir);
-    $this->runShellCommand(
-      sprintf('git remote add origin %s', escapeshellarg($repoUrl)),
-      $artifactDir,
-    );
+    $this->runGitCommand(['init', '.'], $artifactDir);
+    $this->runGitCommand(['remote', 'add', 'origin', $repoUrl], $artifactDir);
 
     if ($this->remoteBranchExists($repoUrl, $artifactBranch)) {
-      $this->runShellCommand(
-        sprintf('git fetch origin %s', escapeshellarg($artifactBranch)),
-        $artifactDir,
-      );
-      $this->runShellCommand(
-        sprintf(
-          'git checkout -B %s %s',
-          escapeshellarg($artifactBranch),
-          escapeshellarg('origin/' . $artifactBranch),
-        ),
-        $artifactDir,
-      );
+      $this->runGitCommand(['fetch', 'origin', $artifactBranch], $artifactDir);
+      $this->runGitCommand(['checkout', '-B', $artifactBranch, 'origin/' . $artifactBranch], $artifactDir);
     }
     else {
-      $this->runShellCommand(
-        sprintf('git checkout -b %s', escapeshellarg($artifactBranch)),
-        $artifactDir,
-      );
+      $this->runGitCommand(['checkout', '-b', $artifactBranch], $artifactDir);
     }
 
     $excludeArgs = $this->buildExcludeArgs($excludePaths);
