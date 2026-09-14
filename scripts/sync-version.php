@@ -29,6 +29,7 @@ if ($version !== NULL) {
   $composer['version'] = $version;
   file_put_contents($composer_path, format_json($composer));
   echo "composer.json → $version\n";
+  exec('composer update --lock');
 }
 else {
   $version = $composer['version'] ?? NULL;
