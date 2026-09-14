@@ -59,8 +59,9 @@ jobs:
             echo "is_release=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # Merging a release/X.Y.Z PR: tag the release commit. No changelog or
-      # composer.json changes (already applied when the release PR was cut).
+      # Merging a release/X.Y.Z PR: tag the release commit. No changelog,
+      # composer.json, or composer.lock changes (already applied when the
+      # release PR was cut).
       - name: Tag release
         if: steps.subject.outputs.is_release == 'true'
         run: |
@@ -117,6 +118,7 @@ jobs:
 
           git checkout -b "release/${NEXT_VERSION}"
           php scripts/sync-version.php "${NEXT_VERSION}"
+          composer update --lock --no-install --no-interaction
 
       - name: Generate changelog
         if: steps.subject.outputs.is_release == 'false' && steps.version.outputs.changed == 'true'
@@ -167,7 +169,7 @@ jobs:
             git push origin --delete "$PENDING_BRANCH" || true
           fi
 
-          git add composer.json CHANGELOG.md
+          git add composer.json composer.lock CHANGELOG.md
           git commit -m "chore(release): ${NEXT_VERSION}"
           git push --force origin "$TARGET_BRANCH"
 
