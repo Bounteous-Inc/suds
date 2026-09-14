@@ -17,16 +17,24 @@ jobs:
     if: github.event.workflow_run.conclusion == 'success'
 
     steps:
+      - name: Generate release bot token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+
       - name: Checkout
         uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Configure git
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "bounteous-release-bot[bot]"
+          git config user.email "bounteous-release-bot[bot]@users.noreply.github.com"
 
       # Determine whether the commit just pushed to main came from merging a
       # release/X.Y.Z PR. Checked via the GitHub API (which PR(s), if any, are
@@ -37,7 +45,7 @@ jobs:
       - name: Check if this is a release commit
         id: subject
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           SHA=$(git rev-parse HEAD)
           RELEASE_REF=$(gh api "repos/${{ github.repository }}/commits/${SHA}/pulls" \
@@ -96,7 +104,7 @@ jobs:
       - name: Prepare release branch and PR
         if: steps.subject.outputs.is_release == 'false' && steps.version.outputs.changed == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           NEXT_VERSION="${{ steps.version.outputs.value }}"
           echo "Preparing release ${NEXT_VERSION}"
@@ -127,7 +135,7 @@ jobs:
         if: steps.subject.outputs.is_release == 'false' && steps.version.outputs.changed == 'true'
         id: pending
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           PENDING=$(gh pr list --repo "${{ github.repository }}" --state open \
             --json number,headRefName \
@@ -142,7 +150,7 @@ jobs:
       - name: Commit and push release branch
         if: steps.subject.outputs.is_release == 'false' && steps.version.outputs.changed == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           NEXT_VERSION="${{ steps.version.outputs.value }}"
           TARGET_BRANCH="release/${NEXT_VERSION}"
